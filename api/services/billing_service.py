@@ -12,6 +12,37 @@ class BillingService:
     stripe.api_key = os.environ.get("STRIPE_API_SECRET_KEY")
     
     @classmethod
+    def find_customer_by_email_and_tenant(cls, email, tenant_id):
+        """
+        Busca um cliente no Stripe usando o e-mail e valida o tenant_id nos metadados.
+        """
+        try:
+            customers = stripe.Customer.list(email=email)
+            for customer in customers.auto_paging_iter():
+                if customer.metadata.get("tenant_id") == tenant_id:
+                    return customer
+            return None
+        except Exception as e:
+            logging.error(f"Erro ao buscar cliente no Stripe: {str(e)}")
+            return None
+
+    @classmethod
+    def update_stripe_customer_metadata(cls, customer_id, tenant_id):
+        """
+        Atualiza os metadados de um cliente no Stripe para associar o tenant_id.
+        """
+        try:
+            stripe.Customer.modify(
+                customer_id,
+                metadata={
+                    "tenant_id": tenant_id
+                }
+            )
+            logging.info(f"Cliente {customer_id} atualizado com tenant_id {tenant_id}")
+        except Exception as e:
+            logging.error(f"Erro ao atualizar cliente no Stripe: {str(e)}")
+
+    @classmethod
     def get_info(cls, tenant_id: str):
         """Obtém as informações de assinatura do locatário."""
         logger.debug(f"Obtendo informações de assinatura para tenant_id: {tenant_id}")
@@ -63,42 +94,114 @@ class BillingService:
             }
 
     @classmethod
-    def get_invoices(cls, email, tenant_id):
+    def get_subscription(cls, email, tenant_id, plan=None, interval=None):
         """
-        Recupera as faturas de um tenant com base no email do usuário e tenant_id.
+        Recupera a assinatura ativa de um cliente no Stripe com base no email e tenant_id.
+        Opcionalmente filtra por plano e intervalo.
         """
         try:
-            # Exemplo de integração com Stripe (ou sistema de faturamento utilizado)
-            invoices = stripe.Invoice.list(customer=email, limit=10)  # Exemplo de API do Stripe
+            # Busca o cliente no Stripe baseado no e-mail
+            customers = stripe.Customer.list(email=email)
+            customer = None
 
-            # Processa e retorna as faturas
-            if invoices:
+            # Verifica se o cliente possui o tenant_id nos metadados
+            for c in customers.auto_paging_iter():
+                if c.metadata.get("tenant_id") == tenant_id:
+                    customer = c
+                    break
+
+            if not customer:
+                return {"error": "Cliente não encontrado para o email e tenant_id fornecidos."}
+
+            # Busca as assinaturas do cliente
+            subscriptions = stripe.Subscription.list(customer=customer.id)
+
+            # Filtra assinaturas com base no plano e intervalo, se fornecidos
+            for subscription in subscriptions.data:
+                if plan and subscription.plan.nickname != plan:
+                    continue
+                if interval and subscription.plan.interval != interval:
+                    continue
+
                 return {
-                    "invoices": [{
-                        "id": invoice.id,
-                        "amount_due": invoice.amount_due,
-                        "status": invoice.status,
-                        "created": invoice.created,
-                    } for invoice in invoices.data]
+                    "id": subscription.id,
+                    "status": subscription.status,
+                    "current_period_end": subscription.current_period_end,
+                    "plan": subscription.plan.nickname,
+                    "interval": subscription.plan.interval
                 }
-            else:
-                return {"message": "Nenhuma fatura encontrada para este tenant."}
+
+            return {"message": "Nenhuma assinatura encontrada para este cliente com o plano e intervalo fornecidos."}
 
         except Exception as e:
-            logger.error(f"Erro ao obter faturas: {str(e)}")
-            return {"error": "Erro ao obter faturas", "details": str(e)}
+            logging.error(f"Erro ao buscar assinatura: {str(e)}")
+            return {"error": f"Erro ao buscar assinatura: {str(e)}"}
+    
+    @classmethod
+    def get_invoices(cls, email, tenant_id):
+        """
+        Recupera as faturas de um cliente no Stripe com base no email e no tenant_id.
+        """
+        try:
+            # Busca o cliente no Stripe pelo email e tenant_id
+            customer = cls.find_customer_by_email_and_tenant(email, tenant_id)
+
+            if not customer:
+                return {"error": "Cliente não encontrado para o email e tenant_id fornecidos."}
+            
+            # Busca as faturas no Stripe para o customer_id encontrado
+            invoices = stripe.Invoice.list(customer=customer.id, limit=10)
+
+            # Processa e retorna as faturas
+            if not invoices.data:
+                return {"message": "Nenhuma fatura encontrada para este cliente."}
+
+            invoice_data = []
+            for invoice in invoices.data:
+                invoice_data.append({
+                    "id": invoice.id,
+                    "status": invoice.status,
+                    "amount_paid": invoice.amount_paid,
+                    "amount_due": invoice.amount_due,
+                    "period_start": invoice.period_start,
+                    "period_end": invoice.period_end
+                })
+
+            return {"invoices": invoice_data}
+
+        except Exception as e:
+            logger.error(f"Erro ao buscar faturas: {str(e)}")
+            return {"error": f"Erro ao buscar faturas: {str(e)}"}
+
 
     @classmethod
     def get_current_plan_info(cls, tenant_id: str) -> dict:
         """Obtém as informações completas do plano atual para o tenant, sincronizado com o front-end."""
         logger.debug(f"Obtendo informações do plano atual para tenant_id: {tenant_id}")
-        logger.debug(f"Informações do plano atual retornadas: {plan_details}")
         logger.debug(f"Chamando get_info para tenant_id: {tenant_id}")
+        
         billing_info = cls.get_info(tenant_id)
         logger.debug(f"billing_info obtido: {billing_info}")
 
+        # Verificação se o billing_info é válido e contém a chave 'subscription'
+        if billing_info is None or "subscription" not in billing_info:
+            logger.error("Erro: billing_info é None ou não contém 'subscription'.")
+            return {"error": "Informações de assinatura ausentes."}
+
         if not billing_info["enabled"]:
             logger.warning(f"Billing não habilitado para tenant_id: {tenant_id}, retornando plano padrão.")
+            plan = "standard"  # Defina um plano padrão para quando o billing estiver desabilitado
+            plan_details = {
+                "members_limit": 0,
+                "apps_limit": 10,
+                "vector_space_limit": 5,
+                "annotation_quota_limit": 10,
+                "documents_upload_quota_limit": 50,
+                "docs_processing": "standard",
+                "can_replace_logo": False,
+                "model_load_balancing_enabled": False,
+                "dataset_operator_enabled": False
+            }
             return {
                 "billing": {
                     "enabled": billing_info["enabled"],
@@ -106,15 +209,15 @@ class BillingService:
                         "plan": plan
                     }
                 },
-                "members": {"size": 0, "limit": plan_details.get("members_limit", 0)},
-                "apps": {"size": 0, "limit": 10},
-                "vector_space": {"size": 0, "limit": 5},
-                "annotation_quota_limit": {"size": 0, "limit": 10},
-                "documents_upload_quota": {"size": 0, "limit": 50},
-                "docs_processing": "standard",
-                "can_replace_logo": False,
-                "model_load_balancing_enabled": False,
-                "dataset_operator_enabled": False
+                "members": {"size": 0, "limit": plan_details["members_limit"]},
+                "apps": {"size": 0, "limit": plan_details["apps_limit"]},
+                "vector_space": {"size": 0, "limit": plan_details["vector_space_limit"]},
+                "annotation_quota_limit": {"size": 0, "limit": plan_details["annotation_quota_limit"]},
+                "documents_upload_quota": {"size": 0, "limit": plan_details["documents_upload_quota_limit"]},
+                "docs_processing": plan_details["docs_processing"],
+                "can_replace_logo": plan_details["can_replace_logo"],
+                "model_load_balancing_enabled": plan_details["model_load_balancing_enabled"],
+                "dataset_operator_enabled": plan_details["dataset_operator_enabled"]
             }
 
         plan = billing_info["subscription"]["plan"]
@@ -145,6 +248,7 @@ class BillingService:
             "dataset_operator_enabled": plan_details.get("dataset_operator_enabled", False)
         }
 
+
     @classmethod
     def get_price_id(cls, plan: str, interval: str) -> str:
         """Obtém o price_id do Stripe para um plano e intervalo específicos."""
@@ -172,7 +276,7 @@ class BillingService:
             return price_id
 
         except stripe.error.StripeError as e:
-            logger.error(f"Erro ao buscar informações de preços para plano '{plan}' e intervalo '{interval}': {e}")
+            logger.error(f"Erro ao buscar informações de preços para plano '{plan}', intervalo '{interval}': {e}")
             raise RuntimeError(f"Erro ao buscar informações de preços: {e}")
 
     @classmethod

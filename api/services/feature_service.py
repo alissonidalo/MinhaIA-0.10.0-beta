@@ -89,31 +89,34 @@ class FeatureService:
             plan_info = BillingService.get_current_plan_info(tenant_id)
             logger.debug(f"Detalhes do plano para tenant_id {tenant_id}: {plan_info}")
 
-            features.billing.enabled = plan_info["billing"]["enabled"]
-            features.billing.subscription.plan = plan_info["billing"]["subscription"]["plan"]
+            features.billing.enabled = plan_info.get("billing", {}).get("enabled", False)
+            features.billing.subscription.plan = plan_info.get("billing", {}).get("subscription", {}).get("plan", "standard")
 
-            features.members.size = plan_info["members"]["size"]
-            features.members.limit = plan_info["members"]["limit"]
+            features.members.size = plan_info.get("members", {}).get("size", 0)
+            features.members.limit = plan_info.get("members", {}).get("limit", 0)
 
-            features.apps.size = plan_info["apps"]["size"]
-            features.apps.limit = plan_info["apps"]["limit"]
+            features.apps.size = plan_info.get("apps", {}).get("size", 0)
+            features.apps.limit = plan_info.get("apps", {}).get("limit", 0)
 
-            features.vector_space.size = plan_info["vector_space"]["size"]
-            features.vector_space.limit = plan_info["vector_space"]["limit"]
+            features.vector_space.size = plan_info.get("vector_space", {}).get("size", 0)
+            features.vector_space.limit = plan_info.get("vector_space", {}).get("limit", 0)
 
-            features.documents_upload_quota.size = plan_info["documents_upload_quota"]["size"]
-            features.documents_upload_quota.limit = plan_info["documents_upload_quota"]["limit"]
+            features.documents_upload_quota.size = plan_info.get("documents_upload_quota", {}).get("size", 0)
+            features.documents_upload_quota.limit = plan_info.get("documents_upload_quota", {}).get("limit", 0)
 
-            features.annotation_quota_limit.size = plan_info["annotation_quota_limit"]["size"]
-            features.annotation_quota_limit.limit = plan_info["annotation_quota_limit"]["limit"]
+            features.annotation_quota_limit.size = plan_info.get("annotation_quota_limit", {}).get("size", 0)
+            features.annotation_quota_limit.limit = plan_info.get("annotation_quota_limit", {}).get("limit", 0)
 
-            features.docs_processing = plan_info["docs_processing"]
-            features.can_replace_logo = plan_info["can_replace_logo"]
-            features.model_load_balancing_enabled = plan_info["model_load_balancing_enabled"]
-            features.dataset_operator_enabled = plan_info["dataset_operator_enabled"]
+            features.docs_processing = plan_info.get("docs_processing", "standard")
+            features.can_replace_logo = plan_info.get("can_replace_logo", False)
+            features.model_load_balancing_enabled = plan_info.get("model_load_balancing_enabled", False)
+            features.dataset_operator_enabled = plan_info.get("dataset_operator_enabled", False)
 
         except KeyError as e:
             logger.error(f"Erro ao preencher informações do plano: chave ausente {e}")
+        except Exception as e:
+            logger.error(f"Erro inesperado ao preencher informações do plano: {e}")
+
 
     @classmethod
     def _fulfill_params_from_enterprise(cls, features):
