@@ -63,6 +63,32 @@ class BillingService:
             }
 
     @classmethod
+    def get_invoices(cls, email, tenant_id):
+        """
+        Recupera as faturas de um tenant com base no email do usuário e tenant_id.
+        """
+        try:
+            # Exemplo de integração com Stripe (ou sistema de faturamento utilizado)
+            invoices = stripe.Invoice.list(customer=email, limit=10)  # Exemplo de API do Stripe
+
+            # Processa e retorna as faturas
+            if invoices:
+                return {
+                    "invoices": [{
+                        "id": invoice.id,
+                        "amount_due": invoice.amount_due,
+                        "status": invoice.status,
+                        "created": invoice.created,
+                    } for invoice in invoices.data]
+                }
+            else:
+                return {"message": "Nenhuma fatura encontrada para este tenant."}
+
+        except Exception as e:
+            logger.error(f"Erro ao obter faturas: {str(e)}")
+            return {"error": "Erro ao obter faturas", "details": str(e)}
+
+    @classmethod
     def get_current_plan_info(cls, tenant_id: str) -> dict:
         """Obtém as informações completas do plano atual para o tenant, sincronizado com o front-end."""
         logger.debug(f"Obtendo informações do plano atual para tenant_id: {tenant_id}")
