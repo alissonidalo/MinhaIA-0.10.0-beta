@@ -89,28 +89,44 @@ class FeatureService:
             plan_info = BillingService.get_current_plan_info(tenant_id)
             logger.debug(f"Detalhes do plano para tenant_id {tenant_id}: {plan_info}")
 
-            features.billing.enabled = plan_info.get("billing", {}).get("enabled", False)
-            features.billing.subscription.plan = plan_info.get("billing", {}).get("subscription", {}).get("plan", "standard")
+            # Preenchendo as informações de billing com fallback adequado
+            billing_info = plan_info.get("billing", {})
+            features.billing.enabled = billing_info.get("enabled", False)
+            features.billing.subscription.plan = billing_info.get("subscription", {}).get("plan", "sandbox")
 
+            # Preenchendo limites de membros, apps, etc.
             features.members.size = plan_info.get("members", {}).get("size", 0)
-            features.members.limit = plan_info.get("members", {}).get("limit", 0)
-
+            features.members.limit = plan_info.get("members", {}).get("limit", 1)
             features.apps.size = plan_info.get("apps", {}).get("size", 0)
-            features.apps.limit = plan_info.get("apps", {}).get("limit", 0)
-
+            features.apps.limit = plan_info.get("apps", {}).get("limit", 10)
             features.vector_space.size = plan_info.get("vector_space", {}).get("size", 0)
-            features.vector_space.limit = plan_info.get("vector_space", {}).get("limit", 0)
-
+            features.vector_space.limit = plan_info.get("vector_space", {}).get("limit", 5)
             features.documents_upload_quota.size = plan_info.get("documents_upload_quota", {}).get("size", 0)
-            features.documents_upload_quota.limit = plan_info.get("documents_upload_quota", {}).get("limit", 0)
-
+            features.documents_upload_quota.limit = plan_info.get("documents_upload_quota", {}).get("limit", 50)
             features.annotation_quota_limit.size = plan_info.get("annotation_quota_limit", {}).get("size", 0)
-            features.annotation_quota_limit.limit = plan_info.get("annotation_quota_limit", {}).get("limit", 0)
+            features.annotation_quota_limit.limit = plan_info.get("annotation_quota_limit", {}).get("limit", 10)
 
+            # Tratar docs_processing com fallback
             features.docs_processing = plan_info.get("docs_processing", "standard")
-            features.can_replace_logo = plan_info.get("can_replace_logo", False)
-            features.model_load_balancing_enabled = plan_info.get("model_load_balancing_enabled", False)
-            features.dataset_operator_enabled = plan_info.get("dataset_operator_enabled", False)
+
+            # Adicionando validação para as opções booleanas
+            can_replace_logo = plan_info.get("can_replace_logo", "false")
+            if isinstance(can_replace_logo, str):
+                features.can_replace_logo = can_replace_logo.lower() == "true"
+            else:
+                features.can_replace_logo = bool(can_replace_logo)
+
+            model_load_balancing_enabled = plan_info.get("model_load_balancing_enabled", "false")
+            if isinstance(model_load_balancing_enabled, str):
+                features.model_load_balancing_enabled = model_load_balancing_enabled.lower() == "true"
+            else:
+                features.model_load_balancing_enabled = bool(model_load_balancing_enabled)
+
+            dataset_operator_enabled = plan_info.get("dataset_operator_enabled", "false")
+            if isinstance(dataset_operator_enabled, str):
+                features.dataset_operator_enabled = dataset_operator_enabled.lower() == "true"
+            else:
+                features.dataset_operator_enabled = bool(dataset_operator_enabled)
 
         except KeyError as e:
             logger.error(f"Erro ao preencher informações do plano: chave ausente {e}")

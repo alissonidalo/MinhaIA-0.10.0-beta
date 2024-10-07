@@ -184,7 +184,7 @@ class BillingService:
         logger.debug(f"billing_info obtido: {billing_info}")
 
         # Verificação se o billing_info é válido e contém a chave 'subscription'
-        if billing_info is None or "subscription" not in billing_info:
+        if not billing_info or "subscription" not in billing_info:
             logger.error("Erro: billing_info é None ou não contém 'subscription'.")
             return {"error": "Informações de assinatura ausentes."}
 
@@ -229,6 +229,8 @@ class BillingService:
 
         plan_details = cls.get_plan_details(price_id)
         logger.debug(f"Detalhes do plano obtidos: {plan_details}")
+
+        logger.debug(f"Resposta da API Stripe para o tenant_id {tenant_id}: {response}")
 
         return {
             "billing": {
