@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-
+import logging
 from configs import dify_config
 from services.billing_service import BillingService
 from services.enterprise.enterprise_service import EnterpriseService
@@ -44,15 +44,26 @@ class SystemFeatureModel(BaseModel):
     enable_web_sso_switch_component: bool = False
 
 
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+
 class FeatureService:
     @classmethod
     def get_features(cls, tenant_id: str) -> FeatureModel:
         features = FeatureModel()
 
+        # Preencher com parâmetros do ambiente
         cls._fulfill_params_from_env(features)
+        logger.debug(f"Parâmetros de ambiente preenchidos: {features}")
 
+        # Preencher com informações de billing, se habilitado
         if dify_config.BILLING_ENABLED:
-            cls._fulfill_params_from_billing_api(features, tenant_id)
+            try:
+                cls._fulfill_params_from_billing_api(features, tenant_id)
+                logger.debug(f"Informações de billing preenchidas: {features}")
+            except Exception as e:
+                logger.error(f"Erro ao preencher informações de billing para tenant_id '{tenant_id}': {e}")
 
         return features
 
@@ -74,40 +85,35 @@ class FeatureService:
 
     @classmethod
     def _fulfill_params_from_billing_api(cls, features: FeatureModel, tenant_id: str):
-        billing_info = BillingService.get_info(tenant_id)
+        try:
+            plan_info = BillingService.get_current_plan_info(tenant_id)
+            logger.debug(f"Detalhes do plano para tenant_id {tenant_id}: {plan_info}")
 
-        features.billing.enabled = billing_info["enabled"]
-        features.billing.subscription.plan = billing_info["subscription"]["plan"]
-        features.billing.subscription.interval = billing_info["subscription"]["interval"]
+            features.billing.enabled = plan_info["billing"]["enabled"]
+            features.billing.subscription.plan = plan_info["billing"]["subscription"]["plan"]
 
-        if "members" in billing_info:
-            features.members.size = billing_info["members"]["size"]
-            features.members.limit = billing_info["members"]["limit"]
+            features.members.size = plan_info["members"]["size"]
+            features.members.limit = plan_info["members"]["limit"]
 
-        if "apps" in billing_info:
-            features.apps.size = billing_info["apps"]["size"]
-            features.apps.limit = billing_info["apps"]["limit"]
+            features.apps.size = plan_info["apps"]["size"]
+            features.apps.limit = plan_info["apps"]["limit"]
 
-        if "vector_space" in billing_info:
-            features.vector_space.size = billing_info["vector_space"]["size"]
-            features.vector_space.limit = billing_info["vector_space"]["limit"]
+            features.vector_space.size = plan_info["vector_space"]["size"]
+            features.vector_space.limit = plan_info["vector_space"]["limit"]
 
-        if "documents_upload_quota" in billing_info:
-            features.documents_upload_quota.size = billing_info["documents_upload_quota"]["size"]
-            features.documents_upload_quota.limit = billing_info["documents_upload_quota"]["limit"]
+            features.documents_upload_quota.size = plan_info["documents_upload_quota"]["size"]
+            features.documents_upload_quota.limit = plan_info["documents_upload_quota"]["limit"]
 
-        if "annotation_quota_limit" in billing_info:
-            features.annotation_quota_limit.size = billing_info["annotation_quota_limit"]["size"]
-            features.annotation_quota_limit.limit = billing_info["annotation_quota_limit"]["limit"]
+            features.annotation_quota_limit.size = plan_info["annotation_quota_limit"]["size"]
+            features.annotation_quota_limit.limit = plan_info["annotation_quota_limit"]["limit"]
 
-        if "docs_processing" in billing_info:
-            features.docs_processing = billing_info["docs_processing"]
+            features.docs_processing = plan_info["docs_processing"]
+            features.can_replace_logo = plan_info["can_replace_logo"]
+            features.model_load_balancing_enabled = plan_info["model_load_balancing_enabled"]
+            features.dataset_operator_enabled = plan_info["dataset_operator_enabled"]
 
-        if "can_replace_logo" in billing_info:
-            features.can_replace_logo = billing_info["can_replace_logo"]
-
-        if "model_load_balancing_enabled" in billing_info:
-            features.model_load_balancing_enabled = billing_info["model_load_balancing_enabled"]
+        except KeyError as e:
+            logger.error(f"Erro ao preencher informações do plano: chave ausente {e}")
 
     @classmethod
     def _fulfill_params_from_enterprise(cls, features):

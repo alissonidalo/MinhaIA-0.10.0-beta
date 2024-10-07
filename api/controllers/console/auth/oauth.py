@@ -102,7 +102,7 @@ def _generate_account(provider: str, user_info: OAuthUserInfo):
 
     if not account:
         # Create account
-        account_name = user_info.name or "Dify"
+        account_name = user_info.name or "Minha IA"
         account = RegisterService.register(
             email=user_info.email, name=account_name, password=None, open_id=user_info.id, provider=provider
         )
