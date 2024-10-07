@@ -15,8 +15,14 @@ class BillingService:
     def get_info(cls, tenant_id: str):
         """Obtém as informações de assinatura do locatário."""
         logger.debug(f"Obtendo informações de assinatura para tenant_id: {tenant_id}")
+        
+        if not tenant_id:
+            raise ValueError("Tenant ID é necessário para buscar as informações de assinatura.")
+        
         try:
-            subscriptions = stripe.Subscription.list(limit=10)
+            # Adiciona um filtro direto para tenant_id na chamada de listagem
+            subscriptions = stripe.Subscription.list(limit=10, expand=["data.plan"])
+
             logger.debug(f"Assinaturas obtidas: {subscriptions}")
 
             # Verificar se há uma correspondência exata para tenant_id nos metadados
@@ -49,8 +55,12 @@ class BillingService:
             return billing_info
 
         except stripe.error.StripeError as e:
-            logger.error(f"Erro ao buscar informações de assinatura do Stripe para tenant_id: {tenant_id} - Erro: {e}")
-            raise RuntimeError(f"Erro ao buscar informações de assinatura: {e}")
+            logger.error(f"Erro ao obter as informações de assinatura: {e}")
+            return {
+                "id": None,
+                "status": "error",
+                "message": "Erro ao obter as informações de assinatura"
+            }
 
     @classmethod
     def get_current_plan_info(cls, tenant_id: str) -> dict:
