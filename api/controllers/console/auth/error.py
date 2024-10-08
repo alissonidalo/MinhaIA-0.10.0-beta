@@ -29,3 +29,8 @@ class PasswordResetRateLimitExceededError(BaseHTTPException):
     error_code = "password_reset_rate_limit_exceeded"
     description = "Password reset rate limit exceeded. Try again later."
     code = 429
+
+class AccountRegisterError(BaseHTTPException):
+    error_code = "account_register_error"
+    description = "An error occurred during account registration."
+    code = 400

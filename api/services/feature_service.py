@@ -91,6 +91,8 @@ class FeatureService:
 
             # Preenchendo as informações de billing com fallback adequado
             billing_info = plan_info.get("billing", {})
+            logger.debug(f"Informações de billing: {billing_info}")
+            
             features.billing.enabled = billing_info.get("enabled", False)
             features.billing.subscription.plan = billing_info.get("subscription", {}).get("plan", "sandbox")
 
@@ -111,22 +113,27 @@ class FeatureService:
 
             # Adicionando validação para as opções booleanas
             can_replace_logo = plan_info.get("can_replace_logo", "false")
-            if isinstance(can_replace_logo, str):
+            if can_replace_logo and isinstance(can_replace_logo, str):
                 features.can_replace_logo = can_replace_logo.lower() == "true"
             else:
                 features.can_replace_logo = bool(can_replace_logo)
+            logger.debug(f"can_replace_logo processado: {features.can_replace_logo}")
 
             model_load_balancing_enabled = plan_info.get("model_load_balancing_enabled", "false")
-            if isinstance(model_load_balancing_enabled, str):
+            logger.debug(f"model_load_balancing_enabled obtido: {model_load_balancing_enabled}")
+            if model_load_balancing_enabled and isinstance(model_load_balancing_enabled, str):
                 features.model_load_balancing_enabled = model_load_balancing_enabled.lower() == "true"
             else:
                 features.model_load_balancing_enabled = bool(model_load_balancing_enabled)
+            logger.debug(f"model_load_balancing_enabled processado: {features.model_load_balancing_enabled}")
 
             dataset_operator_enabled = plan_info.get("dataset_operator_enabled", "false")
-            if isinstance(dataset_operator_enabled, str):
+            logger.debug(f"dataset_operator_enabled obtido: {dataset_operator_enabled}")
+            if dataset_operator_enabled and isinstance(dataset_operator_enabled, str):
                 features.dataset_operator_enabled = dataset_operator_enabled.lower() == "true"
             else:
                 features.dataset_operator_enabled = bool(dataset_operator_enabled)
+            logger.debug(f"dataset_operator_enabled processado: {features.dataset_operator_enabled}")
 
         except KeyError as e:
             logger.error(f"Erro ao preencher informações do plano: chave ausente {e}")

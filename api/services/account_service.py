@@ -129,17 +129,17 @@ class AccountService:
     def create_account(
         email: str, name: str, interface_language: str, password: Optional[str] = None, interface_theme: str = "light"
     ) -> Account:
-        """create account"""
+        """Create account and associate tenant and payment plan"""
         account = Account()
         account.email = email
         account.name = name
 
         if password:
-            # generate password salt
+            # Gerar salt e hash da senha
             salt = secrets.token_bytes(16)
             base64_salt = base64.b64encode(salt).decode()
 
-            # encrypt password with salt
+            # Encriptar a senha com salt
             password_hashed = hash_password(password, salt)
             base64_password_hashed = base64.b64encode(password_hashed).decode()
 
@@ -149,12 +149,43 @@ class AccountService:
         account.interface_language = interface_language
         account.interface_theme = interface_theme
 
-        # Set timezone based on language
+        # Definir o fuso horário com base no idioma
         account.timezone = language_timezone_mapping.get(interface_language, "UTC")
 
+        # Salvar o novo usuário no banco de dados
         db.session.add(account)
         db.session.commit()
+
+        try:
+            # Criar o tenant associado ao novo usuário
+            TenantService.create_owner_tenant_if_not_exist(account)
+
+            # Obter o tenant_id associado ao usuário criado
+            tenant_id = account.current_tenant.id  # Obter o ID do tenant recém-criado
+
+            # Definir o plano e intervalo de pagamento
+            plan = 'basic'  # Definir o plano desejado
+            interval = 'month'  # Definir o intervalo de pagamento
+
+            # Chamar o serviço de faturamento para associar a assinatura
+            subscription_response = createAndAssociateSubscription({
+                "email": account.email,
+                "tenant_id": tenant_id,
+                "plan": plan,
+                "interval": interval
+            })
+
+            # Verificar a resposta do serviço de faturamento
+            if not subscription_response or "error" in subscription_response:
+                logging.error(f"Erro ao associar plano de pagamento ao usuário {account.email}: {subscription_response.get('error', 'Erro desconhecido')}")
+                raise ValueError("Erro ao associar o plano de pagamento.")
+
+        except Exception as e:
+            logging.exception(f"Erro ao associar o plano de pagamento para {email}: {str(e)}")
+            raise e
+
         return account
+
 
     @staticmethod
     def link_account_integrate(provider: str, open_id: str, account: Account) -> None:
@@ -549,17 +580,39 @@ class RegisterService:
             account.status = AccountStatus.ACTIVE.value if not status else status.value
             account.initialized_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
+            # Associa o plano de pagamento ao registrar o usuário
+            try:
+                tenant_id = "tenant_id_correspondente"  # Obtenha o tenant_id correto
+                plan = 'basic'  # Plano de pagamento padrão
+                interval = 'month'  # Intervalo de pagamento
+
+                # Chamada para o serviço de faturamento
+                subscription_response = createAndAssociateSubscription({
+                    "email": account.email,
+                    "tenant_id": tenant_id,
+                    "plan": plan,
+                    "interval": interval
+                })
+
+                if not subscription_response or "error" in subscription_response:
+                    logging.error(f"Erro ao associar o plano de pagamento para {email}: {subscription_response.get('error', 'Erro desconhecido')}")
+                    raise AccountRegisterError("Erro ao associar o plano de pagamento.")
+
+            except Exception as e:
+                logging.error(f"Erro ao associar o plano de pagamento durante o registro de {email}: {str(e)}")
+                raise e
+
             if open_id is not None or provider is not None:
                 AccountService.link_account_integrate(provider, open_id, account)
+
             if dify_config.EDITION != "SELF_HOSTED":
                 tenant = TenantService.create_tenant(f"{account.name}'s Workspace")
-
                 TenantService.create_tenant_member(tenant, account, role="owner")
                 account.current_tenant = tenant
-
                 tenant_was_created.send(tenant)
 
             db.session.commit()
+
         except Exception as e:
             db.session.rollback()
             logging.error(f"Register failed: {e}")
