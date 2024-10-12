@@ -6,10 +6,48 @@ export const NUM_INFINITE = 99999999
 export const contractSales = 'contractSales'
 export const unAvailable = 'unAvailable'
 
-export const contactSalesUrl = 'mailto:business@dify.ai'
+export const contactSalesUrl = 'mailto:comercial@minhaia.com'
+
+// Stripe Product and Price IDs, agora com múltiplos priceIds por plano
+export const STRIPE_PLANS = {
+  sandbox: {
+    productId: 'prod_QsZbt0DwShON3a',  // Produto no Stripe
+    prices: {
+      monthly: unAvailable,
+      yearly: unAvailable,
+      oneTime: 'price_1Q8RJUP1Q7ODTY3xVWsM4Z9F'
+    },
+  },
+  professional: {
+    productId: 'prod_QsZbK1TJoho55K',  // ID do produto no Stripe
+    prices: {
+      monthly: 'price_1Q0oSkP1Q7ODTY3xljhmKOea',
+      yearly: 'price_1Q8RKbP1Q7ODTY3xlNaUPy0U',
+      oneTime: unAvailable
+    },
+  },
+  team: {
+    productId: 'prod_QsZcYAP5OuWzrr',  // ID do produto no Stripe
+    prices: {
+      monthly: 'price_1Q7P6IP1Q7ODTY3xCfKyZyi7',
+      yearly: 'price_1Q7P3sP1Q7ODTY3x54GP00jb',
+      oneTime: unAvailable
+    },
+  },
+  enterprise: {
+    productId: 'prod_QsrSCBv9JZiE6D',  // ID do produto no Stripe
+    prices: {
+      monthly: 'price_1Q8RN0P1Q7ODTY3xwhn1XfXT',
+      yearly: 'price_1Q8RN0P1Q7ODTY3xwhn1XfXT',
+      oneTime: 'price_1Q8RN0P1Q7ODTY3xwhn1XfXT'
+    },
+  },
+}
 
 export const ALL_PLANS: Record<Plan, PlanInfo> = {
   sandbox: {
+    stripeProductId: STRIPE_PLANS.sandbox.productId,  // ID do produto
+    stripePrices: STRIPE_PLANS.sandbox.prices,  // Preços com múltiplos intervalos
     level: 1,
     price: 0,
     modelProviders: supportModelProviders,
@@ -27,6 +65,8 @@ export const ALL_PLANS: Record<Plan, PlanInfo> = {
     annotatedResponse: 10,
   },
   professional: {
+    stripeProductId: STRIPE_PLANS.professional.productId,  // ID do produto
+    stripePrices: STRIPE_PLANS.professional.prices,  // Preços com múltiplos intervalos
     level: 2,
     price: 59,
     modelProviders: supportModelProviders,
@@ -38,12 +78,14 @@ export const ALL_PLANS: Record<Plan, PlanInfo> = {
     logHistory: NUM_INFINITE,
     customTools: 10,
     messageRequest: {
-      en: '5,000  messages/month',
-      zh: '5,000 条信息/月',
+      en: '5,000  mensagens/mês',
+      zh: '5,000  mensagens/mês',
     },
     annotatedResponse: 2000,
   },
   team: {
+    stripeProductId: STRIPE_PLANS.team.productId,  // ID do produto
+    stripePrices: STRIPE_PLANS.team.prices,  // Preços com múltiplos intervalos
     level: 3,
     price: 159,
     modelProviders: supportModelProviders,
@@ -55,12 +97,14 @@ export const ALL_PLANS: Record<Plan, PlanInfo> = {
     logHistory: NUM_INFINITE,
     customTools: NUM_INFINITE,
     messageRequest: {
-      en: '10,000  messages/month',
-      zh: '10,000 条信息/月',
+      en: '10,000  mensagens/mês',
+      zh: '10,000  mensagens/mês',
     },
     annotatedResponse: 5000,
   },
   enterprise: {
+    stripeProductId: STRIPE_PLANS.enterprise.productId,  // ID do produto
+    stripePrices: STRIPE_PLANS.enterprise.prices,  // Preços com múltiplos intervalos
     level: 4,
     price: 0,
     modelProviders: supportModelProviders,

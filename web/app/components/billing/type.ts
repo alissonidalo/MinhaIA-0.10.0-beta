@@ -26,7 +26,15 @@ export type PlanInfo = {
     zh: string | number
   }
   annotatedResponse: number
+  // Adicionando as propriedades para Stripe
+  stripeProductId: string; // Novo campo para armazenar o ID do produto no Stripe
+  stripePrices: {
+    monthly: string | null;
+    yearly: string | null;
+    oneTime: string | null;
+  }
 }
+
 
 export type UsagePlanInfo = Pick<PlanInfo, 'vectorSpace' | 'buildApps' | 'teamMembers' | 'annotatedResponse' | 'documentsUploadQuota'>
 

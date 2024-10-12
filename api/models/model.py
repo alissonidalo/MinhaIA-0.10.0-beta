@@ -18,7 +18,8 @@ from core.file import helpers as file_helpers
 from core.file.tool_file_parser import ToolFileParser
 from enums import FileTransferMethod, FileType
 from extensions.ext_database import db
-from libs.helper import generate_string
+# from libs.helper import generate_string
+from libs.utils import generate_string
 
 from .account import Account, Tenant
 from .types import StringUUID

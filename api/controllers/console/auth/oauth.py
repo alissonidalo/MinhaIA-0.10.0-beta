@@ -9,7 +9,6 @@ from controllers.console.auth.error import InvalidEmailError, AccountRegisterErr
 
 import requests
 from flask import current_app, redirect, request
-from flask_restful import Resource
 
 from configs import dify_config
 from constants.languages import languages
@@ -58,7 +57,8 @@ class CreateUserApi(Resource):
         password = args["password"]
 
         # Obtém o idioma padrão da aplicação se o cliente não enviar um idioma
-        language = args.get("language", dify_config.DEFAULT_LANGUAGE)
+        language = "pt-br"
+        # language = args.get("language", dify_config.DEFAULT_LANGUAGE)
         
         # Validação do email
         if not email:

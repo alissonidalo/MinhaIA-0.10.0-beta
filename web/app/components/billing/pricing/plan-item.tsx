@@ -21,6 +21,7 @@ type Props = {
   canPay: boolean
 }
 
+// Componente para exibir um par de chave-valor com opcional Tooltip
 const KeyValue = ({ label, value, tooltip }: { label: string; value: string | number | JSX.Element; tooltip?: string }) => {
   return (
     <div className='mt-3.5 leading-[125%] text-[13px] font-medium'>
@@ -39,6 +40,7 @@ const KeyValue = ({ label, value, tooltip }: { label: string; value: string | nu
   )
 }
 
+// Estilos para os diferentes planos
 const priceClassName = 'leading-[32px] text-[28px] font-bold text-gray-900'
 const style = {
   [Plan.sandbox]: {
@@ -62,6 +64,7 @@ const style = {
     hoverAndActive: 'hover:shadow-lg hover:!text-white hover:!bg-[#F79009] hover:!border-[#DC6803] active:!text-white active:!bg-[#DC6803] active:!border-[#DC6803]',
   },
 }
+
 const PlanItem: FC<Props> = ({
   plan,
   currentPlan,
@@ -82,6 +85,7 @@ const PlanItem: FC<Props> = ({
   const isCurrent = plan === currentPlan
   const isPlanDisabled = planInfo.level <= ALL_PLANS[currentPlan].level || (!canPay && plan !== Plan.enterprise)
   const { isCurrentWorkspaceManager } = useAppContext()
+
   const messagesRequest = (() => {
     const value = planInfo.messageRequest[isZh ? 'zh' : 'en']
     if (value === contractSales)
@@ -89,6 +93,8 @@ const PlanItem: FC<Props> = ({
 
     return value
   })()
+
+  // Definir o texto do botão dependendo do plano e das condições
   const btnText = (() => {
     if (!canPay && plan !== Plan.enterprise)
       return t('billing.plansCommon.contractOwner')
@@ -103,9 +109,11 @@ const PlanItem: FC<Props> = ({
       [Plan.enterprise]: t('billing.plansCommon.talkToSales'),
     })[plan]
   })()
+
   const comingSoon = (
     <div className='leading-[12px] text-[9px] font-semibold text-[#3538CD] uppercase'>{t('billing.plansCommon.comingSoon')}</div>
   )
+
   const supportContent = (() => {
     switch (plan) {
       case Plan.sandbox:
@@ -177,6 +185,8 @@ const PlanItem: FC<Props> = ({
         return ''
     }
   })()
+
+  // Função para obter a URL correta para o fluxo de pagamento
   const handleGetPayUrl = async () => {
     if (loading)
       return
@@ -188,10 +198,12 @@ const PlanItem: FC<Props> = ({
       return
 
     if (isEnterprisePlan) {
+      // Redireciona para página de contato para planos Enterprise
       window.location.href = contactSalesUrl
       return
     }
-    // Only workspace manager can buy plan
+
+    // Somente o workspace manager pode fazer a compra
     if (!isCurrentWorkspaceManager) {
       Toast.notify({
         type: 'error',
@@ -200,16 +212,17 @@ const PlanItem: FC<Props> = ({
       })
       return
     }
+
     setLoading(true)
     try {
       const res = await fetchSubscriptionUrls(plan, isYear ? 'year' : 'month')
-      // Adb Block additional tracking block the gtag, so we need to redirect directly
+      // Redireciona diretamente para a URL de checkout
       window.location.href = res.url
-    }
-    finally {
+    } finally {
       setLoading(false)
     }
   }
+
   return (
     <div className={cn(isMostPopularPlan ? 'bg-[#0086C9] p-0.5' : 'pt-7', 'flex flex-col min-w-[290px] w-[290px] rounded-xl')}>
       {isMostPopularPlan && (
@@ -219,7 +232,7 @@ const PlanItem: FC<Props> = ({
         <div className={cn(style[plan].title, 'mb-1 leading-[125%] text-lg font-semibold')}>{t(`${i18nPrefix}.name`)}</div>
         <div className={cn(isFreePlan ? 'mb-5 text-[#FB6514]' : 'mb-4 text-gray-500', 'h-8 leading-[125%] text-[13px] font-normal')}>{t(`${i18nPrefix}.description`)}</div>
 
-        {/* Price */}
+        {/* Exibe o preço */}
         {isFreePlan && (
           <div className={priceClassName}>{t('billing.plansCommon.free')}</div>
         )}
@@ -236,6 +249,7 @@ const PlanItem: FC<Props> = ({
           </div>
         )}
 
+        {/* Botão de ação */}
         <div
           className={cn(isMostPopularPlan && !isCurrent && '!bg-[#444CE7] !text-white !border !border-[#3538CD] shadow-sm', isPlanDisabled ? 'opacity-30' : `${style[plan].hoverAndActive} cursor-pointer`, 'mt-4 flex h-11 items-center justify-center border-[2px] border-gray-900 rounded-3xl text-sm font-semibold text-gray-900')}
           onClick={handleGetPayUrl}
@@ -243,8 +257,10 @@ const PlanItem: FC<Props> = ({
           {btnText}
         </div>
 
+        {/* Separador visual */}
         <div className='my-4 h-[1px] bg-black/5'></div>
 
+        {/* Detalhes do plano */}
         <div className='leading-[125%] text-[13px] font-normal text-gray-900'>
           {t(`${i18nPrefix}.includesTitle`)}
         </div>
@@ -272,13 +288,12 @@ const PlanItem: FC<Props> = ({
         />
         <KeyValue
           label={t('billing.plansCommon.documentsUploadQuota')}
-          value={planInfo.vectorSpace === NUM_INFINITE ? t('billing.plansCommon.unlimited') as string : planInfo.documentsUploadQuota}
+          value={planInfo.documentsUploadQuota === NUM_INFINITE ? t('billing.plansCommon.unlimited') as string : planInfo.documentsUploadQuota}
         />
         <KeyValue
           label={t('billing.plansCommon.documentProcessingPriority')}
           value={t(`billing.plansCommon.priority.${planInfo.documentProcessingPriority}`) as string}
         />
-
         <KeyValue
           label={t('billing.plansCommon.annotatedResponse.title')}
           value={planInfo.annotatedResponse === NUM_INFINITE ? t('billing.plansCommon.unlimited') as string : `${planInfo.annotatedResponse}`}
@@ -300,4 +315,5 @@ const PlanItem: FC<Props> = ({
     </div>
   )
 }
+
 export default React.memo(PlanItem)

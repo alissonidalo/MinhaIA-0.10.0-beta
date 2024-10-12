@@ -57,6 +57,8 @@ export const createUser = async ({
   password: string;
 }): Promise<CreateUserResponse> => {
   try {
+    console.log("Iniciando a criação do usuário com os dados:", { email, name });
+
     const response = await post<CreateUserResponse>('/users/create', {
       body: {
         email,
@@ -64,10 +66,29 @@ export const createUser = async ({
         password,
       },
     });
-    return response;
-  } catch (error) {
-    console.error('Erro ao criar usuário:', error);
-    throw error;
+
+    // Log para verificar o conteúdo da resposta
+    console.log("Usuário criado com sucesso. Resposta:", response);
+
+    return response; // Sucesso, retorna a resposta
+
+  } catch (error: any) {
+    // Tratamento de erros, verificar se há uma resposta detalhada
+    if (error.response) {
+      const errorDetails = error.response.data; // Captura o conteúdo detalhado do erro (se houver)
+      
+      if (error.response.status === 409) {
+        console.error("Erro de conflito - E-mail já está em uso:", errorDetails);
+        throw new Error("O e-mail informado já está em uso.");
+      } else {
+        console.error("Erro ao criar usuário. Status:", error.response.status, "Detalhes:", errorDetails);
+        throw new Error('Erro ao criar o usuário. Verifique os dados e tente novamente.');
+      }
+    } else {
+      // Tratamento de erro genérico, caso não seja uma resposta do servidor
+      console.error('Erro desconhecido ao criar usuário:', error);
+      throw new Error('Erro inesperado. Tente novamente mais tarde.');
+    }
   }
 };
 
@@ -90,7 +111,7 @@ export const createAndAssociateSubscription = async ({
   interval: string;
 }): Promise<SubscriptionResponse> => {
   try {
-    const response = await post<SubscriptionResponse>('/api/billing/create-subscription', {
+    const response = await post<SubscriptionResponse>('/billing/create-subscription', {
       body: {
         email,
         tenant_id,
@@ -100,8 +121,15 @@ export const createAndAssociateSubscription = async ({
     });
     return response;
   } catch (error) {
-    console.error('Erro ao criar e associar a assinatura:', error);
-    return { error: 'Erro ao processar a assinatura.' };
+    // Log detalhado da resposta de erro
+    if (error instanceof Response) {
+      const errorDetails = await error.text();
+      console.error('Erro detalhado ao criar a assinatura:', errorDetails);
+      throw new Error('Erro ao criar a assinatura: ' + errorDetails);
+    } else {
+      console.error('Erro desconhecido ao criar e associar a assinatura:', error);
+      throw new Error('Erro ao processar a assinatura.');
+    }
   }
 };
 

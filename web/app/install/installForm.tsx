@@ -52,56 +52,89 @@ const InstallForm = () => {
   const onSubmit = async (data: AccountFormValues) => {
     setLoading(true); // Exibe o carregamento ao submeter o formulário
     setErrorMessage(null); // Reseta a mensagem de erro
-  
+
     try {
-      // Criação do usuário e obtenção do tenant_id
-      const userResponse: CreateUserResponse = await createUser({
-        email: data.email,
-        name: data.name,
-        password: data.password,
-      });
-  
-      // Verifica se o tenant_id foi retornado corretamente
-      if (!userResponse?.tenant_id) {
-        throw new Error('Erro ao gerar tenant_id para o novo usuário.');
-      }
-  
-      const tenant_id = userResponse.tenant_id; // Captura o tenant_id retornado do backend
-  
-      // Chamada para associar o plano de pagamento
-      const plan = 'sandbox'; // Plano de pagamento padrão
-      const interval = 'month'; // Intervalo do plano (mensal)
-  
-      const subscriptionResponse = await createAndAssociateSubscription({
-        email: data.email,
-        tenant_id,
-        plan,
-        interval,
-      });
-  
-      // Verificação do tipo de subscriptionResponse
-      if (typeof subscriptionResponse === 'object' && subscriptionResponse !== null) {
-        if ('error' in subscriptionResponse) {
-          throw new Error(subscriptionResponse.error);
-        } else if ('message' in subscriptionResponse) {
-          console.log('Assinatura criada com sucesso:', subscriptionResponse.message);
-          router.push('/signin'); // Redireciona para a página de login após o sucesso
-        } else {
-          throw new Error('Resposta inesperada do serviço de assinatura.');
+        console.log("Iniciando a criação do usuário com dados:", data); // Log inicial
+
+        // Criação do usuário e obtenção do tenant_id
+        const userResponse: Response = await fetch('/console/api/users/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                email: data.email,
+                name: data.name,
+                password: data.password,
+                interface_theme: 'light',  // Tema pode ser configurável
+            }),
+        });
+
+        console.log("Resposta do servidor para criação de usuário:", userResponse); // Loga a resposta do servidor
+
+        // Verifica se a resposta indica conflito (e-mail já em uso)
+        if (userResponse.status === 409) {
+            const errorData = await userResponse.json();
+            console.error("Erro de conflito - E-mail já está em uso:", errorData);
+            throw new Error(errorData.error || 'E-mail já está em uso.');
         }
-      } else {
-        throw new Error('Resposta inesperada do serviço de assinatura.');
-      }
+
+        // Verifica se houve erro inesperado (500 ou outro)
+        if (!userResponse.ok) {
+            const errorData = await userResponse.text();  // Tenta capturar o texto de erro
+            console.error("Erro ao criar o usuário - Status de erro", userResponse.status, userResponse.statusText, errorData);
+            throw new Error('Erro ao criar o usuário. Verifique os dados e tente novamente.');
+        }
+
+        // Se a criação do usuário foi bem-sucedida, captura o tenant_id
+        const userData = await userResponse.json();
+        console.log("Usuário criado com sucesso. Dados do usuário:", userData);
+        const tenant_id = userData.tenant_id;
+
+        if (!tenant_id) {
+            console.error("Erro: tenant_id não retornado após criação de usuário");
+            throw new Error('Erro ao gerar tenant_id para o novo usuário.');
+        }
+
+        // Chamada para associar o plano de pagamento
+        const plan = 'sandbox'; // Plano de pagamento padrão
+        const interval = 'month'; // Intervalo do plano (mensal)
+        const subscriptionResponse = await createAndAssociateSubscription({
+            email: data.email,
+            tenant_id,
+            plan,
+            interval,
+        });
+
+        console.log("Resposta do servidor para associação de assinatura:", subscriptionResponse); // Loga a resposta da assinatura
+
+        // Verificação do tipo de subscriptionResponse
+        if (typeof subscriptionResponse === 'object' && subscriptionResponse !== null) {
+            if ('error' in subscriptionResponse) {
+                console.error("Erro ao associar plano de pagamento:", subscriptionResponse.error);
+                throw new Error(subscriptionResponse.error);
+            } else if ('message' in subscriptionResponse) {
+                console.log("Assinatura criada com sucesso:", subscriptionResponse.message);
+                router.push('/signin'); // Redireciona para a página de login após o sucesso
+            } else {
+                console.error("Resposta inesperada do serviço de assinatura:", subscriptionResponse);
+                throw new Error('Resposta inesperada do serviço de assinatura.');
+            }
+        } else {
+            console.error("Erro: resposta inesperada do serviço de assinatura:", subscriptionResponse);
+            throw new Error('Resposta inesperada do serviço de assinatura.');
+        }
     } catch (error: any) {
-      // Detalhamento do erro
-      setErrorMessage(error.message || 'Erro inesperado durante o cadastro. Tente novamente.');
-      console.error('Erro ao criar usuário ou associar o plano:', error);
+        // Detalhamento do erro
+        setErrorMessage(error.message || 'Erro inesperado durante o cadastro. Tente novamente.');
+        console.error('Erro ao criar usuário ou associar o plano:', error);
     } finally {
-      setLoading(false); // Remover carregamento após submissão
+        setLoading(false); // Remover carregamento após submissão
     }
   };
-  
 
+
+  
   const handleSetting = async () => {
     handleSubmit(onSubmit)()
   }
@@ -172,7 +205,7 @@ const InstallForm = () => {
 
                 <div>
                   <Button variant="primary" className="w-full" onClick={handleSetting}>
-                    {t('login.createAccount')}
+                    {t('createAndSignIn ')}
                   </Button>
                 </div>
               </form>

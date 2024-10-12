@@ -1,3 +1,4 @@
+from flask import current_app, jsonify, make_response
 import base64
 import logging
 import secrets
@@ -5,10 +6,13 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from typing import Any, Optional
+from werkzeug.exceptions import Unauthorized, Conflict
+
+# Definir o logger
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 from sqlalchemy import func
-from werkzeug.exceptions import Unauthorized
-
 from configs import dify_config
 from constants.languages import language_timezone_mapping, languages
 from events.tenant_event import tenant_was_created
@@ -37,9 +41,20 @@ from services.errors.account import (
 from tasks.mail_invite_member_task import send_invite_member_mail_task
 from tasks.mail_reset_password_task import send_reset_password_mail_task
 
+from services.billing_service import BillingService
+
 
 class AccountService:
-    reset_password_rate_limiter = RateLimiter(prefix="reset_password_rate_limit", max_attempts=5, time_window=60 * 60)
+
+    reset_password_rate_limiter = RateLimiter(
+        prefix="reset_password_rate_limit", 
+        max_attempts=5, 
+        time_window=60 * 60
+    )
+    
+    @staticmethod
+    def teste_import():
+        return "Importação funcionando!"
 
     @staticmethod
     def load_user(user_id: str) -> None | Account:
@@ -47,18 +62,15 @@ class AccountService:
         if not account:
             return None
 
-        if account.status in {AccountStatus.BANNED.value, AccountStatus.CLOSED.value}:
+        if account.status in [AccountStatus.BANNED.value, AccountStatus.CLOSED.value]:
             raise Unauthorized("Account is banned or closed.")
 
-        current_tenant: TenantAccountJoin = TenantAccountJoin.query.filter_by(
-            account_id=account.id, current=True
-        ).first()
+        current_tenant: TenantAccountJoin = TenantAccountJoin.query.filter_by(account_id=account.id, current=True).first()
         if current_tenant:
             account.current_tenant_id = current_tenant.tenant_id
         else:
-            available_ta = (
-                TenantAccountJoin.query.filter_by(account_id=account.id).order_by(TenantAccountJoin.id.asc()).first()
-            )
+            available_ta = TenantAccountJoin.query.filter_by(account_id=account.id) \
+                .order_by(TenantAccountJoin.id.asc()).first()
             if not available_ta:
                 return None
 
@@ -86,14 +98,14 @@ class AccountService:
 
     @staticmethod
     def authenticate(email: str, password: str) -> Account:
-        """authenticate account with email and password"""
-
+        """Autentica o usuário com e-mail e senha"""
+        
         account = Account.query.filter_by(email=email).first()
         if not account:
-            raise AccountLoginError("Invalid email or password.")
+            raise AccountLoginError("E-mail ou senha inválidos.")
 
         if account.status in {AccountStatus.BANNED.value, AccountStatus.CLOSED.value}:
-            raise AccountLoginError("Account is banned or closed.")
+            raise AccountLoginError("A conta está banida ou fechada.")
 
         if account.status == AccountStatus.PENDING.value:
             account.status = AccountStatus.ACTIVE.value
@@ -101,118 +113,137 @@ class AccountService:
             db.session.commit()
 
         if account.password is None or not compare_password(password, account.password, account.password_salt):
-            raise AccountLoginError("Invalid email or password.")
+            raise AccountLoginError("E-mail ou senha inválidos.")
         return account
 
     @staticmethod
     def update_account_password(account, password, new_password):
-        """update account password"""
+        """Atualiza a senha da conta"""
         if account.password and not compare_password(password, account.password, account.password_salt):
-            raise CurrentPasswordIncorrectError("Current password is incorrect.")
+            raise CurrentPasswordIncorrectError("A senha atual está incorreta.")
 
-        # may be raised
+        # Verifica se a nova senha é válida
         valid_password(new_password)
 
-        # generate password salt
+        # Gera o salt para a nova senha
         salt = secrets.token_bytes(16)
         base64_salt = base64.b64encode(salt).decode()
 
-        # encrypt password with salt
+        # Criptografa a nova senha com o salt
         password_hashed = hash_password(new_password, salt)
         base64_password_hashed = base64.b64encode(password_hashed).decode()
         account.password = base64_password_hashed
         account.password_salt = base64_salt
         db.session.commit()
         return account
-
+ 
     @staticmethod
     def create_account(
-        email: str, name: str, interface_language: str, password: Optional[str] = None, interface_theme: str = "light"
+        email: str, 
+        name: str, 
+        interface_language: str, 
+        password: Optional[str] = None, 
+        interface_theme: str = "light",  
+        plan: Optional[str] = None,  
+        interval: Optional[str] = None  
     ) -> Account:
-        """Create account and associate tenant and payment plan"""
-        account = Account()
-        account.email = email
-        account.name = name
+        """
+        Cria uma conta e associa um tenant e uma assinatura.
+        Se o plano ou intervalo não forem especificados, 'sandbox' e 'month' serão usados como padrão.
+        """
+        with current_app.app_context():  # Garante o contexto de aplicação
+            logger.info(f"Iniciando a criação da conta para o e-mail: {email}")
 
-        if password:
-            # Gerar salt e hash da senha
-            salt = secrets.token_bytes(16)
-            base64_salt = base64.b64encode(salt).decode()
+            try:
+                # Verifica se o e-mail já está em uso
+                existing_account = Account.query.filter_by(email=email).first()
+                if existing_account:
+                    logger.warning(f"Tentativa de criar uma conta com e-mail já existente: {email}")
+                    raise Conflict(f"O e-mail {email} já está em uso.")
 
-            # Encriptar a senha com salt
-            password_hashed = hash_password(password, salt)
-            base64_password_hashed = base64.b64encode(password_hashed).decode()
+                # Cria a conta
+                account = Account(email=email, name=name)
 
-            account.password = base64_password_hashed
-            account.password_salt = base64_salt
+                # Configuração de senha e idioma
+                if password:
+                    logger.debug(f"Criando hash de senha para o e-mail: {email}")
+                    salt = secrets.token_bytes(16)
+                    account.password_salt = base64.b64encode(salt).decode()
+                    hashed_password = hash_password(password, salt)
+                    account.password = base64.b64encode(hashed_password).decode()
 
-        account.interface_language = interface_language
-        account.interface_theme = interface_theme
+                account.interface_language = interface_language
+                account.interface_theme = interface_theme
+                account.timezone = language_timezone_mapping.get(interface_language, "UTC")
 
-        # Definir o fuso horário com base no idioma
-        account.timezone = language_timezone_mapping.get(interface_language, "UTC")
+                # Salva a conta no banco de dados
+                db.session.add(account)
+                db.session.commit()
+                logger.info(f"Conta criada com sucesso para o e-mail: {email}")
 
-        # Salvar o novo usuário no banco de dados
-        db.session.add(account)
-        db.session.commit()
+                try:
+                    TenantService.create_owner_tenant_if_not_exist(account)  # Cria o tenant se ainda não existir
+                    tenant_id = account.current_tenant.id  # Obtém o ID do tenant recém-criado
+                    plan_to_use = plan if plan else 'sandbox'  # Define o plano, com padrão 'sandbox'
+                    interval_to_use = interval if interval else 'month'  # Define o intervalo, com padrão 'month'
+                    
+                    logger.info(f"Associando assinatura para tenant_id: {tenant_id}, plano: {plan_to_use}, intervalo: {interval_to_use}")
 
-        try:
-            # Criar o tenant associado ao novo usuário
-            TenantService.create_owner_tenant_if_not_exist(account)
+                    # Parte do código dentro de `create_account` onde ocorre a associação da assinatura
+                    subscription = BillingService.create_and_associate_subscription(
+                        email=email, 
+                        tenant_id=tenant_id, 
+                        plan=plan_to_use,  
+                        interval=interval_to_use
+                    )
 
-            # Obter o tenant_id associado ao usuário criado
-            tenant_id = account.current_tenant.id  # Obter o ID do tenant recém-criado
+                    if not subscription or 'error' in subscription:
+                        logger.error(f"Erro ao associar assinatura: {subscription.get('error', 'Erro desconhecido')}")
+                        logger.error(f"Resposta completa da API Stripe: {subscription}")  # adicionado para ajudar no debug
+                        raise ValueError(f"Erro ao associar plano de pagamento ao tenant: {subscription.get('error', 'Erro desconhecido')}")
 
-            # Definir o plano e intervalo de pagamento
-            plan = 'basic'  # Definir o plano desejado
-            interval = 'month'  # Definir o intervalo de pagamento
+                except Exception as e:
+                    db.session.rollback()
+                    logger.error(f"Erro durante criação da conta e associação da assinatura para {email}: {str(e)}")
+                    raise
 
-            # Chamar o serviço de faturamento para associar a assinatura
-            subscription_response = createAndAssociateSubscription({
-                "email": account.email,
-                "tenant_id": tenant_id,
-                "plan": plan,
-                "interval": interval
-            })
+                logger.info(f"Conta e assinatura criadas com sucesso para o e-mail: {email}")
+                return account
 
-            # Verificar a resposta do serviço de faturamento
-            if not subscription_response or "error" in subscription_response:
-                logging.error(f"Erro ao associar plano de pagamento ao usuário {account.email}: {subscription_response.get('error', 'Erro desconhecido')}")
-                raise ValueError("Erro ao associar o plano de pagamento.")
+            except Conflict as e:
+                logger.error(f"Erro de conflito ao criar a conta: {str(e)}")
+                raise
 
-        except Exception as e:
-            logging.exception(f"Erro ao associar o plano de pagamento para {email}: {str(e)}")
-            raise e
-
-        return account
-
+            except Exception as e:
+                logger.error(f"Erro genérico ao criar a conta para {email}: {str(e)}")
+                raise
 
     @staticmethod
     def link_account_integrate(provider: str, open_id: str, account: Account) -> None:
-        """Link account integrate"""
+        """Associa a conta com uma integração externa"""
         try:
-            # Query whether there is an existing binding record for the same provider
+            # Verifica se já existe um vínculo com esse provedor
             account_integrate: Optional[AccountIntegrate] = AccountIntegrate.query.filter_by(
                 account_id=account.id, provider=provider
             ).first()
 
             if account_integrate:
-                # If it exists, update the record
+                # Atualiza o vínculo existente
                 account_integrate.open_id = open_id
-                account_integrate.encrypted_token = ""  # todo
+                account_integrate.encrypted_token = ""  # Todo
                 account_integrate.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
             else:
-                # If it does not exist, create a new record
+                # Cria um novo vínculo
                 account_integrate = AccountIntegrate(
                     account_id=account.id, provider=provider, open_id=open_id, encrypted_token=""
                 )
                 db.session.add(account_integrate)
 
             db.session.commit()
-            logging.info(f"Account {account.id} linked {provider} account {open_id}.")
+            logging.info(f"Conta {account.id} vinculada ao provedor {provider}.")
         except Exception as e:
-            logging.exception(f"Failed to link {provider} account {open_id} to Account {account.id}")
-            raise LinkAccountIntegrateError("Failed to link account.") from e
+            logging.exception(f"Falha ao vincular a conta {open_id} do provedor {provider} à conta {account.id}")
+            raise LinkAccountIntegrateError("Falha ao vincular a conta.") from e
 
     @staticmethod
     def close_account(account: Account) -> None:
@@ -517,6 +548,23 @@ class TenantService:
 
         return tenant.custom_config_dict
 
+    @staticmethod
+    def get_tenant_plan(tenant_id: int) -> dict:
+        """Retrieve the plan and usage data for a tenant"""
+        tenant = (
+            db.session.query(Tenant)
+            .filter(Tenant.id == tenant_id, Tenant.status == TenantStatus.NORMAL)
+            .first()
+        )
+        if not tenant:
+            raise TenantNotFoundError("Tenant not found.")
+
+        # Aqui está o ponto chave, acessando o plano e os dados de uso do tenant
+        return {
+            "plan_name": tenant.plan_name,  # Supondo que isso já exista no modelo Tenant
+            "usage_data": tenant.usage_data  # Também assumindo que esse dado já exista
+        }
+        
 
 class RegisterService:
     @classmethod
