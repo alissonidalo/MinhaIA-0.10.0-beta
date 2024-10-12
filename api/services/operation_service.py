@@ -1,9 +1,11 @@
 import os
-
+import stripe
 import requests
 
 
 class OperationService:
+    # Lê as variáveis de ambiente para a URL e chave da API do Stripe
+    stripe.api_key = os.environ.get("BILLING_API_SECRET_KEY")
     base_url = os.environ.get("BILLING_API_URL", "BILLING_API_URL")
     secret_key = os.environ.get("BILLING_API_SECRET_KEY", "BILLING_API_SECRET_KEY")
 

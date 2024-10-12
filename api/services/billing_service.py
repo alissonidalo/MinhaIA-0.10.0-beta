@@ -1,55 +1,628 @@
 import os
-
-import requests
+import stripe
+import logging
+import json  # Adicionar json para formatar os logs
 
 from extensions.ext_database import db
 from models.account import TenantAccountJoin, TenantAccountRole
 
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Se você estiver executando com o Gunicorn, ele pode precisar disso
+for handler in logger.handlers:
+    handler.setLevel(logging.DEBUG)
+
+logger.info("Forçando o nível de log para DEBUG")
+
+
+# Configuração dos planos do Stripe
+STRIPE_PLANS = {
+    "sandbox": {
+        "productId": "prod_QsZbt0DwShON3a",
+        "prices": {
+            "month": "price_1Q0oSBP1Q7ODTY3xIiGwvQm3",
+            "year": "price_1Q6wc0P1Q7ODTY3x2Ea8EsiH",
+            "oneTime": "price_1Q8RJUP1Q7ODTY3xVWsM4Z9F"
+        },
+    },
+    "professional": {
+        "productId": "prod_QsZbK1TJoho55K",
+        "prices": {
+            "month": "price_1Q0oSkP1Q7ODTY3xljhmKOea",
+            "year": "price_1Q8RKbP1Q7ODTY3xlNaUPy0U",
+            "oneTime": None
+        },
+    },
+    "team": {
+        "productId": "prod_QsZcYAP5OuWzrr",
+        "prices": {
+            "month": "price_1Q7P6IP1Q7ODTY3xCfKyZyi7",
+            "year": "price_1Q7P3sP1Q7ODTY3x54GP00jb",
+            "oneTime": None
+        },
+    },
+    "enterprise": {
+        "productId": "prod_QsrSCBv9JZiE6D",
+        "prices": {
+            "month": "price_1Q8RN0P1Q7ODTY3xwhn1XfXT",
+            "year": "price_1Q8RN0P1Q7ODTY3xwhn1XfXT",
+            "oneTime": "price_1Q8RN0P1Q7ODTY3xwhn1XfXT"
+        },
+    },
+}
+
 
 class BillingService:
-    base_url = os.environ.get("BILLING_API_URL", "BILLING_API_URL")
-    secret_key = os.environ.get("BILLING_API_SECRET_KEY", "BILLING_API_SECRET_KEY")
+    # Lê as variáveis de ambiente para a chave da API do Stripe
+    stripe.api_key = os.environ.get("STRIPE_API_SECRET_KEY")
+
+    @classmethod
+    def create_checkout_session(cls, email, tenant_id, plan, interval="month", success_url=None, cancel_url=None):
+        """
+        Cria uma sessão de Checkout do Stripe para redirecionar o usuário e coletar o método de pagamento.
+        Somente para planos pagos.
+        """
+        if plan == "sandbox":
+            logger.info(f"O plano '{plan}' não requer checkout.")
+            return None
+
+        try:
+            price_id = cls.get_price_id(plan, interval)
+            if not price_id:
+                raise ValueError(f"Price ID não encontrado para o plano {plan} com intervalo {interval}")
+
+            # URLs de sucesso e cancelamento
+            if not success_url:
+                success_url = url_for('checkout_success', _external=True)
+            if not cancel_url:
+                cancel_url = url_for('checkout_cancel', _external=True)
+
+            # Criar a sessão de checkout no Stripe
+            session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                customer_email=email,
+                line_items=[{
+                    'price': price_id,
+                    'quantity': 1
+                }],
+                mode='subscription',  # Define que é uma assinatura
+                metadata={"tenant_id": tenant_id},  # Associar tenant_id
+                success_url=success_url + "?session_id={CHECKOUT_SESSION_ID}",
+                cancel_url=cancel_url
+            )
+
+            logger.info(f"Sessão de checkout criada com sucesso. Session ID: {session.id}")
+            return session.url
+
+        except stripe.error.StripeError as e:
+            logger.error(f"Erro do Stripe ao criar sessão de checkout para {email}: {str(e)}")
+            return {"error": f"Erro do Stripe ao criar sessão de checkout: {str(e)}"}
+
+        except Exception as e:
+            logger.error(f"Erro inesperado ao criar sessão de checkout para {email}: {str(e)}")
+            return {"error": f"Erro inesperado ao criar sessão de checkout: {str(e)}"}    
+    
+
+    @classmethod
+    def create_and_associate_subscription(cls, email, tenant_id, plan, interval="month"):
+        """
+        Cria um cliente no Stripe e, se for um plano pago, redireciona para o Checkout.
+        """
+        logger.info(f"Iniciando criação de assinatura para {email} com plano {plan} e intervalo {interval}")
+
+        if plan == "sandbox":
+            # Processar plano Sandbox sem pagamento
+            return cls.associate_plan_to_customer_without_checkout(email, tenant_id, plan)
+
+        try:
+            # Criar sessão de checkout para planos pagos
+            session_url = cls.create_checkout_session(email, tenant_id, plan, interval)
+            if session_url:
+                logger.info(f"Redirecionando para o checkout do Stripe: {session_url}")
+                return {"checkout_url": session_url}
+
+            return {"message": "Plano gratuito ativado com sucesso."}
+
+        except Exception as e:
+            logger.error(f"Erro inesperado ao criar e associar assinatura para {email}: {str(e)}")
+            return {"error": f"Erro inesperado ao criar assinatura: {str(e)}"}
+
+
+    @classmethod
+    def associate_plan_to_customer_without_checkout(cls, email, tenant_id, plan):
+        """
+        Associa diretamente o plano sandbox ao cliente, sem necessidade de pagamento.
+        """
+        try:
+            # Criar o cliente no Stripe
+            customer = cls.create_stripe_customer(email=email, tenant_id=tenant_id)
+            if not customer:
+                logger.error(f"Erro ao criar cliente no Stripe para {email}")
+                return {"error": "Erro ao criar cliente no Stripe."}
+
+            # Associa o plano gratuito diretamente
+            subscription = stripe.Subscription.create(
+                customer=customer.id,
+                items=[{"price": cls.get_price_id(plan, "month")}],
+                metadata={"tenant_id": tenant_id}
+            )
+
+            logger.info(f"Assinatura do plano {plan} criada com sucesso para o cliente {email}")
+            return {"message": "Assinatura do plano sandbox criada com sucesso.", "subscription": subscription}
+
+        except Exception as e:
+            logger.error(f"Erro ao associar plano gratuito: {str(e)}")
+            return {"error": "Erro ao associar plano gratuito."}
+
+
+    @classmethod
+    def create_stripe_customer(cls, email, tenant_id, name=None):
+        """
+        Cria um cliente no Stripe e associa o tenant_id como metadado.
+        """
+        try:
+            customer = stripe.Customer.create(
+                email=email,
+                name=name,
+                metadata={"tenant_id": tenant_id}
+            )
+            logger.info(f"Cliente criado no Stripe para tenant {tenant_id}")
+            return customer
+            
+        except Exception as e:
+            logger.error(f"Erro ao criar cliente no Stripe: {str(e)}")
+            return None
+    
+    @classmethod
+    def get_customer_by_email(cls, email):
+        """
+        Obtém o cliente do Stripe pelo email.
+        """
+        try:
+            customers = stripe.Customer.list(email=email).data
+            if customers:
+                return customers[0]
+            return None
+
+        except Exception as e:
+            logger.error(f"Erro ao obter cliente do Stripe: {str(e)}")
+            return None
+
+
+    @classmethod
+    def associate_plan_to_customer(cls, customer_id, plan, interval, tenant_id):
+        """
+        Associa um plano de assinatura a um cliente no Stripe e adiciona o tenant_id como metadado.
+        """
+        try:
+            # Obter o price_id com base no plano e intervalo selecionados
+            price_id = cls.get_price_id(plan, interval)
+            if not price_id:
+                raise ValueError(f"Price ID não encontrado para o plano {plan} com intervalo {interval}")
+
+            # Criação da assinatura no Stripe
+            subscription = stripe.Subscription.create(
+                customer=customer_id,
+                items=[{"price": price_id}],
+                expand=["latest_invoice.payment_intent", "plan"],
+                metadata={"tenant_id": tenant_id}
+            )
+
+            # Log detalhado da assinatura criada
+            logger.debug(f"Assinatura criada: {json.dumps(subscription, indent=2)}")
+
+            # Verifica se o plano foi corretamente retornado
+            plan_info = subscription['items']['data'][0]['plan']
+            if not plan_info:
+                logger.error(f"Plano da assinatura não encontrado após criação para o cliente {customer_id}")
+                return {"error": "Plano da assinatura não encontrado."}
+
+            logger.info(f"Assinatura criada com sucesso para o cliente {customer_id}. Plano: {plan_info['id']}")
+
+            return subscription
+
+        except stripe.error.StripeError as e:
+            logger.error(f"Erro ao associar plano ao cliente {customer_id}: {str(e)}")
+            return {"error": "Erro ao associar plano ao cliente."}
+
+        except Exception as e:
+            logger.error(f"Erro inesperado ao associar plano ao cliente {customer_id}: {str(e)}")
+            return {"error": f"Erro inesperado: {str(e)}"}
+
+
+    @classmethod
+    def get_price_id(cls, plan: str, interval: str) -> str:
+        """
+        Obtém o price_id do Stripe para um plano e intervalo específicos com base no mapeamento local.
+        """
+        try:
+            logger.debug(f"Obtendo price_id para plano: {plan}, intervalo: {interval}")
+
+            if not plan or not interval:
+                logger.error(f"Parâmetro inválido: plano={plan}, intervalo={interval}")
+                raise ValueError("Plano e intervalo não podem ser nulos.")
+
+            # Busca no mapeamento de produtos configurado localmente
+            plan_info = STRIPE_PLANS.get(plan)
+            if not plan_info:
+                logger.error(f"Plano '{plan}' não encontrado na configuração local.")
+                raise ValueError(f"Plano '{plan}' não encontrado.")
+
+            # Seleciona o priceId com base no intervalo (mensal, anual, ou tarifa única)
+            price_id = plan_info['prices'].get(interval)
+            if not price_id:
+                logger.error(f"Price ID não encontrado para o plano '{plan}' com o intervalo '{interval}'.")
+                raise ValueError(f"O plano '{plan}' não suporta o intervalo '{interval}'.")
+
+            logger.info(f"Price ID encontrado: {price_id} para plano '{plan}' e intervalo '{interval}'")
+            return price_id
+
+        except Exception as e:
+            logger.error(f"Erro ao buscar Price ID para plano '{plan}' e intervalo '{interval}': {str(e)}")
+            raise
+
+
+    @classmethod
+    def find_customer_by_email_and_tenant(cls, email, tenant_id):
+        """
+        Busca um cliente no Stripe usando o e-mail e valida o tenant_id nos metadados.
+        """
+        try:
+            customers = stripe.Customer.list(email=email)
+            for customer in customers.auto_paging_iter():
+                if customer.metadata.get("tenant_id") == tenant_id:
+                    return customer
+            return None
+        except Exception as e:
+            logger.error(f"Erro ao buscar cliente no Stripe: {str(e)}")
+            return None
+
+
+    @classmethod
+    def update_stripe_customer_metadata(cls, customer_id, tenant_id):
+        """
+        Atualiza os metadados de um cliente no Stripe para associar o tenant_id.
+        """
+        try:
+            stripe.Customer.modify(
+                customer_id,
+                metadata={"tenant_id": tenant_id}
+            )
+            logger.info(f"Cliente {customer_id} atualizado com tenant_id {tenant_id}")
+        except Exception as e:
+            logger.error(f"Erro ao atualizar cliente no Stripe: {str(e)}")
+
 
     @classmethod
     def get_info(cls, tenant_id: str):
-        params = {"tenant_id": tenant_id}
+        """Obtém as informações de assinatura do locatário."""
+        try:
+            logger.debug(f"Obtendo informações de assinatura para tenant_id: {tenant_id}")
+            if not tenant_id:
+                raise ValueError("Tenant ID é necessário para buscar as informações de assinatura.")
+            
+            subscriptions = stripe.Subscription.list(limit=10, expand=["data.plan"])
 
-        billing_info = cls._send_request("GET", "/subscription/info", params=params)
+            logger.debug(f"Assinaturas obtidas do Stripe: {subscriptions}")
 
-        return billing_info
+            # Verificar se há uma correspondência exata para tenant_id nos metadados
+            subscription = next((s for s in subscriptions.data if s.metadata.get('tenant_id') == tenant_id), None)
+
+            if not subscription:
+                logger.warning(f"Nenhuma assinatura encontrada para tenant_id: {tenant_id}")
+                return {
+                    "id": None,
+                    "status": "not_found",
+                    "current_period_end": None,
+                    "customer": None,
+                    "enabled": False,
+                    "message": "Nenhuma assinatura encontrada para o tenant"
+                }
+
+            plan_info = subscription.plan
+            if not plan_info:
+                logger.error(f"Plano da assinatura está None para tenant_id {tenant_id}")
+                return {
+                    "id": subscription.id,
+                    "status": subscription.status,
+                    "current_period_end": subscription.current_period_end,
+                    "customer": subscription.customer,
+                    "enabled": False,
+                    "message": "Plano não encontrado na assinatura"
+                }
+
+            # Verificar o atributo correto do plano
+            if not hasattr(plan_info, 'name') or not plan_info.name:
+                logger.error(f"O plano da assinatura não contém o nome. Tenant ID: {tenant_id}")
+                return {
+                    "id": subscription.id,
+                    "status": subscription.status,
+                    "current_period_end": subscription.current_period_end,
+                    "customer": subscription.customer,
+                    "enabled": False,
+                    "message": "Nome do plano não encontrado na assinatura"
+                }
+
+            billing_info = {
+                "id": subscription.id,
+                "status": subscription.status,
+                "current_period_end": subscription.current_period_end,
+                "customer": subscription.customer,
+                "enabled": subscription.status == "active",
+                "subscription": {
+                    "plan": plan_info.name,  # Substituímos por 'name' ao invés de 'nickname'
+                    "interval": plan_info.interval  # Intervalo deve ser mantido se disponível
+                }
+            }
+
+            logger.debug(f"Informações de billing extraídas: {billing_info}")
+            return billing_info
+
+        except stripe.error.StripeError as e:
+            logger.error(f"Erro ao obter as informações de assinatura: {e}")
+            return {
+                "id": None,
+                "status": "error",
+                "message": "Erro ao obter as informações de assinatura"
+            }
+
 
     @classmethod
-    def get_subscription(cls, plan: str, interval: str, prefilled_email: str = "", tenant_id: str = ""):
-        params = {"plan": plan, "interval": interval, "prefilled_email": prefilled_email, "tenant_id": tenant_id}
-        return cls._send_request("GET", "/subscription/payment-link", params=params)
+    def reprocess_subscription(cls, email, tenant_id):
+        """
+        Reprocessa a assinatura de um cliente no Stripe para garantir que os dados corretos estão sendo capturados.
+        Se já houver uma assinatura ativa, ela será atualizada; caso contrário, uma nova assinatura será criada.
+        """
+        try:
+            logger.info(f"Iniciando reprocessamento de assinatura para o cliente {email}")
+
+            # Recupera a assinatura ativa do cliente no Stripe com base no email e tenant_id
+            subscription_info = cls.get_subscription(email=email, tenant_id=tenant_id)
+
+            if not subscription_info or subscription_info.get("error"):
+                logger.error(f"Erro ao obter assinatura existente para reprocessamento: {subscription_info.get('error', 'Erro desconhecido')}")
+                raise ValueError("Erro ao obter informações de assinatura para reprocessamento.")
+
+            # Verifica se já existe uma assinatura ativa
+            if subscription_info.get("id"):
+                logger.info(f"Assinatura existente encontrada para o cliente {email}. ID da assinatura: {subscription_info['id']}")
+                return {"message": "Assinatura existente reprocessada com sucesso.", "subscription": subscription_info}
+
+            # Se não há uma assinatura ativa, cria uma nova
+            current_plan = subscription_info.get("plan", 'sandbox')  # Define o plano padrão ou usa o existente
+            current_interval = subscription_info.get("interval", 'month')  # Define o intervalo padrão ou usa o existente
+
+            logger.info(f"Reprocessando nova assinatura para o plano {current_plan} com intervalo {current_interval}")
+
+            subscription_data = cls.create_and_associate_subscription(
+                email=email,
+                tenant_id=tenant_id,
+                plan=current_plan,
+                interval=current_interval
+            )
+
+            if subscription_data.get("error"):
+                logger.error(f"Erro ao reprocessar assinatura: {subscription_data['error']}")
+            else:
+                logger.info(f"Reprocessamento da assinatura realizado com sucesso para {email}")
+
+            return subscription_data
+
+        except Exception as e:
+            logger.error(f"Erro ao reprocessar assinatura para {email}: {str(e)}")
+            raise e
+
+        except Exception as e:
+            logger.error(f"Erro ao reprocessar assinatura para {email}: {str(e)}")
+            raise e
+
 
     @classmethod
-    def get_model_provider_payment_link(cls, provider_name: str, tenant_id: str, account_id: str, prefilled_email: str):
-        params = {
-            "provider_name": provider_name,
-            "tenant_id": tenant_id,
-            "account_id": account_id,
-            "prefilled_email": prefilled_email,
+    def get_subscription(cls, email, tenant_id, plan=None, interval=None):
+        """
+        Recupera a assinatura ativa de um cliente no Stripe com base no email e tenant_id.
+        Opcionalmente filtra por plano e intervalo.
+        """
+        try:
+            # Busca o cliente no Stripe baseado no e-mail
+            customers = stripe.Customer.list(email=email)
+            customer = None
+
+            # Verifica se o cliente possui o tenant_id nos metadados
+            for c in customers.auto_paging_iter():
+                if c.metadata.get("tenant_id") == tenant_id:
+                    customer = c
+                    break
+
+            if not customer:
+                return {"error": "Cliente não encontrado para o email e tenant_id fornecidos."}
+
+            # Busca as assinaturas do cliente
+            subscriptions = stripe.Subscription.list(customer=customer.id)
+
+            # Filtra assinaturas com base no plano e intervalo, se fornecidos
+            for subscription in subscriptions.data:
+                if plan and subscription.plan.name != plan:
+                    continue
+                if interval and subscription.plan.interval != interval:
+                    continue
+
+                return {
+                    "id": subscription.id,
+                    "status": subscription.status,
+                    "current_period_end": subscription.current_period_end,
+                    "plan": subscription.plan.name,
+                    "interval": subscription.plan.interval
+                }
+
+            return {"message": "Nenhuma assinatura encontrada para este cliente com o plano e intervalo fornecidos."}
+
+        except Exception as e:
+            logger.error(f"Erro ao buscar assinatura: {str(e)}")
+            return {"error": f"Erro ao buscar assinatura: {str(e)}"}
+    
+    @staticmethod
+    def get_product_metadata(product_id: str):
+        """
+        Obtém os metadados do produto a partir do Stripe ou outro serviço de billing.
+        """
+        try:
+            product = stripe.Product.retrieve(product_id)
+            return product.metadata
+        except stripe.error.StripeError as e:
+            logger.error(f"Erro ao buscar metadados do produto para product_id '{product_id}': {e}")
+            return {}
+
+    @classmethod
+    def get_invoices(cls, email, tenant_id):
+        """
+        Recupera as faturas de um cliente no Stripe com base no email e no tenant_id.
+        """
+        try:
+            # Busca o cliente no Stripe pelo email e tenant_id
+            customer = cls.find_customer_by_email_and_tenant(email, tenant_id)
+
+            if not customer:
+                return {"error": "Cliente não encontrado para o email e tenant_id fornecidos."}
+            
+            # Busca as faturas no Stripe para o customer_id encontrado
+            invoices = stripe.Invoice.list(customer=customer.id, limit=10)
+
+            # Processa e retorna as faturas
+            if not invoices.data:
+                return {"message": "Nenhuma fatura encontrada para este cliente."}
+
+            invoice_data = []
+            for invoice in invoices.data:
+                invoice_data.append({
+                    "id": invoice.id,
+                    "status": invoice.status,
+                    "amount_paid": invoice.amount_paid,
+                    "amount_due": invoice.amount_due,
+                    "period_start": invoice.period_start,
+                    "period_end": invoice.period_end
+                })
+
+            return {"invoices": invoice_data}
+
+        except Exception as e:
+            logger.error(f"Erro ao buscar faturas: {str(e)}")
+            return {"error": f"Erro ao buscar faturas: {str(e)}"}
+
+    @classmethod
+    def get_current_plan_info(cls, tenant_id: str) -> dict:
+        """Obtém as informações completas do plano atual para o tenant, sincronizado com o front-end."""
+        logger.debug(f"Obtendo informações do plano atual para tenant_id: {tenant_id}")
+        logger.debug(f"Chamando get_info para tenant_id: {tenant_id}")
+        
+        billing_info = cls.get_info(tenant_id)
+        logger.debug(f"billing_info obtido: {billing_info}")
+
+        # Verificação se o billing_info é válido e contém a chave 'subscription'
+        if not billing_info or "subscription" not in billing_info:
+            logger.error("Erro: billing_info é None ou não contém 'subscription'.")
+            return {"error": "Informações de assinatura ausentes."}
+
+        if not billing_info["enabled"]:
+            logger.warning(f"Billing não habilitado para tenant_id: {tenant_id}, retornando plano padrão.")
+            plan = "standard"
+            plan_details = {
+                "members_limit": 0,
+                "apps_limit": 10,
+                "vector_space_limit": 5,
+                "annotation_quota_limit": 10,
+                "documents_upload_quota_limit": 50,
+                "docs_processing": "standard",
+                "can_replace_logo": False,
+                "model_load_balancing_enabled": False,
+                "dataset_operator_enabled": False
+            }
+            return {
+                "billing": {
+                    "enabled": billing_info["enabled"],
+                    "subscription": {
+                        "plan": plan
+                    }
+                },
+                "members": {"size": 0, "limit": plan_details["members_limit"]},
+                "apps": {"size": 0, "limit": plan_details["apps_limit"]},
+                "vector_space": {"size": 0, "limit": plan_details["vector_space_limit"]},
+                "annotation_quota_limit": {"size": 0, "limit": plan_details["annotation_quota_limit"]},
+                "documents_upload_quota": {"size": 0, "limit": plan_details["documents_upload_quota_limit"]},
+                "docs_processing": plan_details["docs_processing"],
+                "can_replace_logo": plan_details["can_replace_logo"],
+                "model_load_balancing_enabled": plan_details["model_load_balancing_enabled"],
+                "dataset_operator_enabled": plan_details["dataset_operator_enabled"]
+            }
+
+        plan = billing_info["subscription"]["plan"]
+        interval = billing_info["subscription"]["interval"]
+        logger.debug(f"Plano: {plan}, Intervalo: {interval} para tenant_id: {tenant_id}")
+
+        price_id = cls.get_price_id(plan, interval)
+        logger.debug(f"price_id obtido para plano '{plan}' e intervalo '{interval}': {price_id}")
+
+        plan_details = cls.get_plan_details(price_id)
+        logger.debug(f"Detalhes do plano obtidos: {plan_details}")
+
+        return {
+            "billing": {
+                "enabled": billing_info["enabled"],
+                "subscription": {
+                    "plan": plan
+                }
+            },
+            "members": {"size": 0, "limit": plan_details.get("members_limit", 0)},
+            "apps": {"size": 0, "limit": plan_details.get("apps_limit", 0)},
+            "vector_space": {"size": 0, "limit": plan_details.get("vector_space_limit", 0)},
+            "annotation_quota_limit": {"size": 0, "limit": plan_details.get("annotation_quota_limit", 0)},
+            "documents_upload_quota": {"size": 0, "limit": plan_details.get("documents_upload_quota_limit", 0)},
+            "docs_processing": plan_details.get("docs_processing", "standard"),
+            "can_replace_logo": plan_details.get("can_replace_logo", False),
+            "model_load_balancing_enabled": plan_details.get("model_load_balancing_enabled", False),
+            "dataset_operator_enabled": plan_details.get("dataset_operator_enabled", False)
         }
-        return cls._send_request("GET", "/model-provider/payment-link", params=params)
 
     @classmethod
-    def get_invoices(cls, prefilled_email: str = "", tenant_id: str = ""):
-        params = {"prefilled_email": prefilled_email, "tenant_id": tenant_id}
-        return cls._send_request("GET", "/invoices", params=params)
+    def get_plan_details(cls, price_id: str) -> dict:
+        """Recupera os detalhes do plano a partir dos metadados do Stripe usando o price_id."""
+        logger.debug(f"Obtendo detalhes do plano para price_id: {price_id}")
+        try:
+            price = stripe.Price.retrieve(price_id)
+            product = stripe.Product.retrieve(price.product)
+            logger.debug(f"Produto obtido para price_id '{price_id}': {product}")
 
-    @classmethod
-    def _send_request(cls, method, endpoint, json=None, params=None):
-        headers = {"Content-Type": "application/json", "Billing-Api-Secret-Key": cls.secret_key}
+            # Tratamento para obter os metadados corretamente
+            metadata = product.metadata
 
-        url = f"{cls.base_url}{endpoint}"
-        response = requests.request(method, url, json=json, params=params, headers=headers)
+            plan_details = {
+                "members_limit": int(metadata.get("members_limit", 0)),
+                "apps_limit": int(metadata.get("apps_limit", 0)),
+                "vector_space_limit": int(metadata.get("vector_space_limit", 0)),
+                "documents_upload_quota_limit": int(metadata.get("documents_upload_quota_limit", 0)),
+                "annotation_quota_limit": int(metadata.get("annotation_quota_limit", 0)),
+                "docs_processing": metadata.get("docs_processing", "standard"),
+                "can_replace_logo": metadata.get("can_replace_logo", "false").lower() == "true",
+                "model_load_balancing_enabled": metadata.get("model_load_balancing_enabled", "false").lower() == "true",
+                "dataset_operator_enabled": metadata.get("dataset_operator_enabled", "false").lower() == "true",
+                "support": metadata.get("support", "communityForums"),
+                "rag_api_request": int(metadata.get("rag_api_request", 0)),
+                "logs_history": int(metadata.get("logs_history", 0))
+            }
 
-        return response.json()
+            logger.debug(f"Detalhes do plano obtidos: {plan_details}")
+            return plan_details
+
+        except stripe.error.StripeError as e:
+            logger.error(f"Erro ao buscar detalhes do plano no Stripe para price_id '{price_id}': {e}")
+            raise RuntimeError(f"Erro ao buscar detalhes do plano no Stripe: {e}")
 
     @staticmethod
     def is_tenant_owner_or_admin(current_user):
+        """Verifica se o usuário atual é o proprietário ou administrador do locatário."""
         tenant_id = current_user.current_tenant_id
+        logger.debug(f"Verificando se o usuário é proprietário ou administrador para tenant_id: {tenant_id}")
 
         join = (
             db.session.query(TenantAccountJoin)
@@ -57,5 +630,8 @@ class BillingService:
             .first()
         )
 
-        if not TenantAccountRole.is_privileged_role(join.role):
-            raise ValueError("Only team owner or team admin can perform this action")
+        if not join or not TenantAccountRole.is_privileged_role(join.role):
+            logger.error(f"Usuário não autorizado para tenant_id: {tenant_id}")
+            raise ValueError("Somente o proprietário ou administrador do time pode realizar esta ação")
+
+        logger.info(f"Usuário autorizado para tenant_id: {tenant_id}")

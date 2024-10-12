@@ -7,6 +7,8 @@ import { Sparkles } from '../../base/icons/src/public/billing'
 import s from './style.module.css'
 import cn from '@/utils/classnames'
 import { useModalContext } from '@/context/modal-context'
+import useSWR from 'swr'
+import { fetchBillingUrl } from '@/service/billing'
 
 type Props = {
   className?: string
@@ -44,12 +46,25 @@ const UpgradeBtn: FC<Props> = ({
 }) => {
   const { t } = useTranslation()
   const { setShowPricingModal } = useModalContext()
+
+  // Usa SWR para pegar a URL de upgrade de plano
+  const { data: billingUrl } = useSWR(
+    '/billing/subscription',
+    () => fetchBillingUrl().then(data => data.url),
+  )
+
   const handleClick = () => {
-    if (_onClick)
+    if (_onClick) {
       _onClick()
-    else
-      (setShowPricingModal as any)()
+    } else if (billingUrl) {
+      // Se houver uma URL de billing, redireciona o usuário para ela
+      window.location.href = billingUrl
+    } else {
+      // Caso contrário, abre o modal de preços
+      setShowPricingModal?.()
+    }
   }
+
   const onClick = () => {
     handleClick()
     if (loc && (window as any).gtag) {
@@ -81,4 +96,5 @@ const UpgradeBtn: FC<Props> = ({
     </div>
   )
 }
+
 export default React.memo(UpgradeBtn)

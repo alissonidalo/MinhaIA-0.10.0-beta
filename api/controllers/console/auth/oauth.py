@@ -2,9 +2,13 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from flask_restful import Resource, reqparse
+from controllers.console import api
+from controllers.console.auth.error import InvalidEmailError, AccountRegisterError
+
+
 import requests
 from flask import current_app, redirect, request
-from flask_restful import Resource
 
 from configs import dify_config
 from constants.languages import languages
@@ -39,6 +43,45 @@ def get_oauth_providers():
 
         OAUTH_PROVIDERS = {"github": github_oauth, "google": google_oauth}
         return OAUTH_PROVIDERS
+
+class CreateUserApi(Resource):
+    def post(self):
+        parser = reqparse.RequestParser()
+        parser.add_argument("email", type=str, required=True, location="json")
+        parser.add_argument("name", type=str, required=True, location="json")
+        parser.add_argument("password", type=str, required=True, location="json")
+        args = parser.parse_args()
+
+        email = args["email"]
+        name = args["name"]
+        password = args["password"]
+
+        # Obtém o idioma padrão da aplicação se o cliente não enviar um idioma
+        language = "pt-br"
+        # language = args.get("language", dify_config.DEFAULT_LANGUAGE)
+        
+        # Validação do email
+        if not email:
+            raise InvalidEmailError()
+
+        try:
+            # Chama o serviço para criar o usuário
+            new_user = AccountService.create_account(
+                email=email,
+                name=name,
+                interface_language=language,  # Pode ser passado um idioma padrão ou a partir de argumentos
+                password=password,
+            )
+
+            # Retorna o ID do tenant associado ao novo usuário criado
+            return {"tenant_id": new_user.current_tenant_id}, 201
+
+        except AccountRegisterError as e:
+            # Captura erros de registro de conta e retorna uma resposta adequada
+            return {"error": str(e)}, 400
+        except Exception as e:
+            # Erros genéricos
+            return {"error": "Erro inesperado ao criar usuário."}, 500
 
 
 class OAuthLogin(Resource):
@@ -102,7 +145,7 @@ def _generate_account(provider: str, user_info: OAuthUserInfo):
 
     if not account:
         # Create account
-        account_name = user_info.name or "Dify"
+        account_name = user_info.name or "Minha IA"
         account = RegisterService.register(
             email=user_info.email, name=account_name, password=None, open_id=user_info.id, provider=provider
         )
@@ -122,5 +165,6 @@ def _generate_account(provider: str, user_info: OAuthUserInfo):
     return account
 
 
+api.add_resource(CreateUserApi, '/users/create')
 api.add_resource(OAuthLogin, "/oauth/login/<provider>")
 api.add_resource(OAuthCallback, "/oauth/authorize/<provider>")

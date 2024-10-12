@@ -1,40 +1,42 @@
 'use client'
-import type { FC } from 'react'
-import React from 'react'
+import React, { FC, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import useSWR from 'swr'
-import {
-  RiExternalLinkLine,
-} from '@remixicon/react'
 import PlanComp from '../plan'
-import { ReceiptList } from '../../base/icons/src/vender/line/financeAndECommerce'
 import { fetchBillingUrl } from '@/service/billing'
 import { useAppContext } from '@/context/app-context'
 import { useProviderContext } from '@/context/provider-context'
+import { Plan } from '../type'  // Importando o enum Plan
 
 const Billing: FC = () => {
   const { t } = useTranslation()
   const { isCurrentWorkspaceManager } = useAppContext()
-  const { enableBilling } = useProviderContext()
+  const { enableBilling, plan } = useProviderContext()
+
+  // Usa SWR para pegar a URL de faturamento, mas apenas para planos pagos
   const { data: billingUrl } = useSWR(
-    (!enableBilling || !isCurrentWorkspaceManager) ? null : ['/billing/invoices'],
+    (!enableBilling || !isCurrentWorkspaceManager || plan.type === Plan.sandbox) ? null : ['/billing/invoices'],
     () => fetchBillingUrl().then(data => data.url),
   )
+
+  useEffect(() => {
+    if (billingUrl) {
+      window.location.href = billingUrl
+    }
+  }, [billingUrl])
 
   return (
     <div>
       <PlanComp loc={'billing-page'} />
-      {enableBilling && isCurrentWorkspaceManager && billingUrl && (
+      {enableBilling && isCurrentWorkspaceManager && billingUrl && plan.type !== Plan.sandbox && (
         <a className='mt-5 flex px-6 justify-between h-12 items-center bg-gray-50 rounded-xl cursor-pointer' href={billingUrl} target='_blank' rel='noopener noreferrer'>
           <div className='flex items-center'>
-            <ReceiptList className='w-4 h-4 text-gray-700' />
             <div className='ml-2 text-sm font-normal text-gray-700'>{t('billing.viewBilling')}</div>
           </div>
-          <RiExternalLinkLine className='w-3 h-3' />
         </a>
       )}
     </div>
   )
 }
 
-export default React.memo(Billing)
+export default Billing
