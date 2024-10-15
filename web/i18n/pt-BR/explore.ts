@@ -1,5 +1,5 @@
 const translation = {
-  title: 'Badać',
+  title: 'Espaço de Trabalho',
   sidebar: {
     discovery: 'Descoberta',
     chat: 'Chat',
@@ -30,11 +30,13 @@ const translation = {
     nameRequired: 'O nome do aplicativo é obrigatório',
   },
   category: {
+    Agents: 'Agentes',
+    Workflow: 'Fluxo de trabalho',
     Assistant: 'Assistente',
-    Writing: 'Escrita',
+    Writing: 'Conteúdo',
     Translate: 'Traduzir',
     Programming: 'Programação',
-    HR: 'RH',
+    HR: 'Recursos Humanos',
   },
 }
 

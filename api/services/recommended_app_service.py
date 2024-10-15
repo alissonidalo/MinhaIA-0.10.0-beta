@@ -40,8 +40,8 @@ class RecommendedAppService:
         else:
             raise ValueError(f"invalid fetch recommended apps mode: {mode}")
 
-        if not result.get("recommended_apps") and language != "en-US":
-            result = cls._fetch_recommended_apps_from_builtin("en-US")
+        if not result.get("recommended_apps") and language != "pt-BR":
+            result = cls._fetch_recommended_apps_from_builtin("pt-BR")
 
         return result
 

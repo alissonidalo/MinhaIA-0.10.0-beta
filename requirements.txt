@@ -46,3 +46,7 @@ typing_extensions==4.12.2
 urllib3==2.2.3
 virtualenv==20.26.6
 Werkzeug==3.0.4
+torch==1.12.0 
+tensorflow==2.9.0 
+flax==0.5.1
+gunicorn

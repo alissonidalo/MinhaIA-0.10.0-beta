@@ -29,5 +29,6 @@ class DeploymentConfig(BaseSettings):
 
     DEPLOY_ENV: str = Field(
         description="Deployment environment (e.g., 'PRODUCTION', 'DEVELOPMENT'), default to PRODUCTION",
-        default="PRODUCTION",
+        #default="PRODUCTION",
+        default="DEVELOPMENT",
     )

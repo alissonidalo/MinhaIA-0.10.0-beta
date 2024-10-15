@@ -30,7 +30,7 @@ const UsageInfo: FC<Props> = ({
 }) => {
   const { t } = useTranslation()
 
-  const percent = usage / total * 100
+  const percent = total === 0 ? 0 : (usage / total) * 100
   const color = (() => {
     if (percent < LOW)
       return '#155EEF'
@@ -40,6 +40,7 @@ const UsageInfo: FC<Props> = ({
 
     return '#F04438'
   })()
+
   return (
     <div className={className}>
       <div className='flex justify-between h-5 items-center'>
