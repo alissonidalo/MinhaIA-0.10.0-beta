@@ -35,7 +35,7 @@ const GithubStar = () => {
 
   return (
     <a
-      href='https://github.com/langgenius/dify'
+      href='https://minhaia.com'
       target='_blank' rel='noopener noreferrer'
       className='flex items-center leading-[18px] border border-gray-200 rounded-md text-xs text-gray-700 font-semibold overflow-hidden'>
       <div className='flex items-center px-2 py-1 bg-gray-100'>

@@ -19,12 +19,12 @@ const validPassword = /^(?=.*[a-zA-Z])(?=.*\d).{8,}$/
 const accountFormSchema = z.object({
   email: z
     .string()
-    .min(1, { message: 'login.error.emailInValid' })
-    .email('login.error.emailInValid'),
-  name: z.string().min(1, { message: 'login.error.nameEmpty' }),
+    .min(1, { message: 'register.error.emailInValid' })
+    .email('register.error.emailInValid'),
+  name: z.string().min(1, { message: 'register.error.nameEmpty' }),
   password: z.string().min(8, {
-    message: 'login.error.passwordLengthInValid',
-  }).regex(validPassword, 'login.error.passwordInvalid'),
+    message: 'register.error.passwordLengthInValid',
+  }).regex(validPassword, 'register.error.passwordInvalid'),
 })
 
 // Tipos do formulário
@@ -143,34 +143,21 @@ const InstallForm = () => {
     loading
       ? <Loading />
       : <div className="sm:mx-auto sm:w-full sm:max-w-md">
-          <h2 className="text-[32px] font-bold text-gray-900">{t('login.createAccount')}</h2>
-          <p className="mt-1 text-sm text-gray-600">{t('login.createAccountDesc')}</p>
+          <h2 className="text-[32px] font-bold text-gray-900">{t('register.createAccount')}</h2>
+          <p className="mt-1 text-sm text-gray-600">{t('register.createAccountDesc')}</p>
           <div className="grow mt-8 sm:mx-auto sm:w-full sm:max-w-md">
             <div className="bg-white">
               {errorMessage && <div className="text-red-400">{errorMessage}</div>} {/* Exibe mensagem de erro se existir */}
               <form onSubmit={handleSubmit(onSubmit)}>
-                <div className="mb-5">
-                  <label htmlFor="email" className="my-2 flex items-center justify-between text-sm font-medium text-gray-900">
-                    {t('login.email')}
-                  </label>
-                  <div className="mt-1">
-                    <input
-                      {...register('email')}
-                      placeholder={t('login.emailPlaceholder') || ''}
-                      className="appearance-none block w-full rounded-lg pl-[14px] px-3 py-2 border border-gray-200 hover:border-gray-300 hover:shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 placeholder-gray-400 caret-primary-600 sm:text-sm"
-                    />
-                    {errors.email && <span className="text-red-400 text-sm">{t(`${errors.email?.message}`)}</span>}
-                  </div>
-                </div>
 
-                <div className="mb-5">
+              <div className="mb-5">
                   <label htmlFor="name" className="my-2 flex items-center justify-between text-sm font-medium text-gray-900">
-                    {t('login.name')}
+                    {t('register.name')}
                   </label>
                   <div className="mt-1 relative rounded-md shadow-sm">
                     <input
                       {...register('name')}
-                      placeholder={t('login.namePlaceholder') || ''}
+                      placeholder={t('register.namePlaceholder') || ''}
                       className="appearance-none block w-full rounded-lg pl-[14px] px-3 py-2 border border-gray-200 hover:border-gray-300 hover:shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 placeholder-gray-400 caret-primary-600 sm:text-sm pr-10"
                     />
                   </div>
@@ -178,14 +165,28 @@ const InstallForm = () => {
                 </div>
 
                 <div className="mb-5">
+                  <label htmlFor="email" className="my-2 flex items-center justify-between text-sm font-medium text-gray-900">
+                    {t('register.email')}
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      {...register('email')}
+                      placeholder={t('register.emailPlaceholder') || ''}
+                      className="appearance-none block w-full rounded-lg pl-[14px] px-3 py-2 border border-gray-200 hover:border-gray-300 hover:shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 placeholder-gray-400 caret-primary-600 sm:text-sm"
+                    />
+                    {errors.email && <span className="text-red-400 text-sm">{t(`${errors.email?.message}`)}</span>}
+                  </div>
+                </div>
+
+                <div className="mb-5">
                   <label htmlFor="password" className="my-2 flex items-center justify-between text-sm font-medium text-gray-900">
-                    {t('login.password')}
+                    {t('register.password')}
                   </label>
                   <div className="mt-1 relative rounded-md shadow-sm">
                     <input
                       {...register('password')}
                       type={showPassword ? 'text' : 'password'}
-                      placeholder={t('login.passwordPlaceholder') || ''}
+                      placeholder={t('register.passwordPlaceholder') || ''}
                       className="appearance-none block w-full rounded-lg pl-[14px] px-3 py-2 border border-gray-200 hover:border-gray-300 hover:shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 placeholder-gray-400 caret-primary-600 sm:text-sm pr-10"
                     />
                     <div className="absolute inset-y-0 right-0 flex items-center pr-3">
@@ -199,43 +200,31 @@ const InstallForm = () => {
                     </div>
                   </div>
                   <div className={classNames('mt-1 text-xs text-gray-500', { 'text-red-400 !text-sm': errors.password })}>
-                    {t('login.error.passwordInvalid')}
+                    {t('register.error.passwordInvalid')}
                   </div>
                 </div>
 
                 <div>
                   <Button variant="primary" className="w-full" onClick={handleSetting}>
-                    {t('createAndSignIn ')}
+                    {t('register.signBtn')}
                   </Button>
                 </div>
               </form>
               {/*  agree to our Terms and Privacy Policy. */}
               <div className="w-hull text-center block mt-2 text-xs text-gray-600">
-                {t('login.tosDesc')}
+                {t('register.tosDesc')}
                 &nbsp;
                 <Link
                   className='text-primary-600'
                   target='_blank' rel='noopener noreferrer'
                   href='https://minhaia.com/termos'
-                >{t('login.tos')}</Link>
+                >{t('register.tos')}</Link>
                 &nbsp;&&nbsp;
                 <Link
                   className='text-primary-600'
                   target='_blank' rel='noopener noreferrer'
                   href='https://minhaia.com/privacidade'
-                >{t('login.pp')}</Link>
-              </div>
-              {/* revisar */}
-              <div className="block w-full mt-2 text-xs text-gray-600">
-                {t('login.license.tip')}
-                &nbsp;
-                <Link
-                  className="text-primary-600"
-                  target="_blank" rel="noopener noreferrer"
-                  href={'https://minhaia.com/termos'}
-                >
-                  {t('login.license.link')}
-                </Link>
+                >{t('register.pp')}</Link>
               </div>
             </div>
           </div>

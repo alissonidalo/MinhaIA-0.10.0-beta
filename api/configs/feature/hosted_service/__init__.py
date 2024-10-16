@@ -11,12 +11,12 @@ class HostedOpenAiConfig(BaseSettings):
 
     HOSTED_OPENAI_API_KEY: Optional[str] = Field(
         description="API key for hosted OpenAI service",
-        default=None, 
+        default=None,
     )
 
     HOSTED_OPENAI_API_BASE: Optional[str] = Field(
         description="Base URL for hosted OpenAI API",
-        default="https://api.openai.com/v1",
+        default="https://api.openai.com",
     )
 
     HOSTED_OPENAI_API_ORGANIZATION: Optional[str] = Field(
