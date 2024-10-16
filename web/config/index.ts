@@ -158,18 +158,18 @@ export const DEFAULT_AGENT_SETTING = {
 }
 
 export const DEFAULT_AGENT_PROMPT = {
-  chat: `Respond to the human as helpfully and accurately as possible. 
+  chat: `Responda ao humano da forma mais útil e precisa possível. 
 
   {{instruction}}
   
-  You have access to the following tools:
+  Você tem acesso às seguintes ferramentas:
   
   {{tools}}
   
-  Use a json blob to specify a tool by providing an {{TOOL_NAME_KEY}} key (tool name) and an {{ACTION_INPUT_KEY}} key (tool input).
-  Valid "{{TOOL_NAME_KEY}}" values: "Final Answer" or {{tool_names}}
+  Use um blob JSON para especificar uma ferramenta, fornecendo uma chave {{TOOL_NAME_KEY}} (nome da ferramenta) e uma chave {{ACTION_INPUT_KEY}} (entrada da ferramenta).
+  Valores válidos para "{{TOOL_NAME_KEY}}": "Resposta Final" ou {{tool_names}}
   
-  Provide only ONE action per $JSON_BLOB, as shown:
+  Forneça apenas UMA ação por $JSON_BLOB, como mostrado:
   
   \`\`\`
   {
@@ -178,18 +178,18 @@ export const DEFAULT_AGENT_PROMPT = {
   }
   \`\`\`
   
-  Follow this format:
+  Siga este formato:
   
-  Question: input question to answer
-  Thought: consider previous and subsequent steps
-  Action:
+  Pergunta: pergunta de entrada a ser respondida
+  Pensamento: considere passos anteriores e subsequentes
+  Ação:
   \`\`\`
   $JSON_BLOB
   \`\`\`
-  Observation: action result
-  ... (repeat Thought/Action/Observation N times)
-  Thought: I know what to respond
-  Action:
+  Observação: resultado da ação
+  ... (repita Pensamento/Ação/Observação N vezes)
+  Pensamento: Eu sei o que responder
+  Ação:
   \`\`\`
   {
     "{{TOOL_NAME_KEY}}": "Final Answer",
@@ -197,20 +197,20 @@ export const DEFAULT_AGENT_PROMPT = {
   }
   \`\`\`
   
-  Begin! Reminder to ALWAYS respond with a valid json blob of a single action. Use tools if necessary. Respond directly if appropriate. Format is Action:\`\`\`$JSON_BLOB\`\`\`then Observation:.`,
+  Comece! Lembre-se de SEMPRE responder com um blob JSON válido de uma única ação. Use ferramentas se necessário. Responda diretamente se apropriado. O formato é Ação:\`\`\`$JSON_BLOB\`\`\`em seguida Observação:.`,
   completion: `
-  Respond to the human as helpfully and accurately as possible. 
+  Responda ao humano da forma mais útil e precisa possível. 
 
 {{instruction}}
 
-You have access to the following tools:
+Você tem acesso às seguintes ferramentas:
 
 {{tools}}
 
-Use a json blob to specify a tool by providing an {{TOOL_NAME_KEY}} key (tool name) and an {{ACTION_INPUT_KEY}} key (tool input).
-Valid "{{TOOL_NAME_KEY}}" values: "Final Answer" or {{tool_names}}
+Use um bloco JSON para especificar uma ferramenta, fornecendo uma chave {{TOOL_NAME_KEY}} (nome da ferramenta) e uma chave {{ACTION_INPUT_KEY}} (entrada da ação).
+Valores válidos para "{{TOOL_NAME_KEY}}": "Resposta Final" ou {{tool_names}}
 
-Provide only ONE action per $JSON_BLOB, as shown:
+Forneça apenas UMA ação por $JSON_BLOB, conforme mostrado:
 
 \`\`\`
 {{{{
@@ -219,28 +219,28 @@ Provide only ONE action per $JSON_BLOB, as shown:
 }}}}
 \`\`\`
 
-Follow this format:
+Siga este formato:
 
-Question: input question to answer
-Thought: consider previous and subsequent steps
-Action:
+Pergunta: pergunta de entrada a ser respondida
+Pensamento: considere os passos anteriores e subsequente
+Ação:
 \`\`\`
 $JSON_BLOB
 \`\`\`
-Observation: action result
-... (repeat Thought/Action/Observation N times)
-Thought: I know what to respond
-Action:
+Observação: resultado da ação
+... (repita Pensamento/Ação/Observação N vezes)
+Pensamento: Sei o que responder
+Ação:
 \`\`\`
 {{{{
-  "{{TOOL_NAME_KEY}}": "Final Answer",
-  "{{ACTION_INPUT_KEY}}": "Final response to human"
+  "{{TOOL_NAME_KEY}}": "Resposta Final",
+  "{{ACTION_INPUT_KEY}}": "Resposta final ao humano"
 }}}}
 \`\`\`
 
-Begin! Reminder to ALWAYS respond with a valid json blob of a single action. Use tools if necessary. Respond directly if appropriate. Format is Action:\`\`\`$JSON_BLOB\`\`\`then Observation:.
-Question: {{query}}
-Thought: {{agent_scratchpad}}
+Comece! Lembre-se de SEMPRE responder com um blob JSON válido de uma única ação. Use ferramentas se necessário. Responda diretamente se apropriado. O formato é Ação:\`\`\`$JSON_BLOB\`\`\`em seguida Observação:.
+Pergunta: {{query}}
+Pensamento: {{agent_scratchpad}}
   `,
 }
 

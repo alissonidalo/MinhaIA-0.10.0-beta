@@ -48,7 +48,7 @@ const UpgradeBtn: FC<Props> = ({
   const { setShowPricingModal } = useModalContext()
 
   // Usa SWR para pegar a URL de upgrade de plano
-  const { data: billingUrl } = useSWR(
+  const { data: billingUrl, error } = useSWR(
     '/billing/subscription',
     () => fetchBillingUrl().then(data => data.url),
   )
@@ -56,7 +56,7 @@ const UpgradeBtn: FC<Props> = ({
   const handleClick = () => {
     if (_onClick) {
       _onClick()
-    } else if (billingUrl) {
+    } else if (billingUrl && !error) {
       // Se houver uma URL de billing, redireciona o usuário para ela
       window.location.href = billingUrl
     } else {

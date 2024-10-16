@@ -16,17 +16,17 @@ class HostedOpenAiConfig(BaseSettings):
 
     HOSTED_OPENAI_API_BASE: Optional[str] = Field(
         description="Base URL for hosted OpenAI API",
-        default=None,
+        default="https://api.openai.com",
     )
 
     HOSTED_OPENAI_API_ORGANIZATION: Optional[str] = Field(
         description="Organization ID for hosted OpenAI service",
-        default=None,
+        default="org-un1SjOsva61wwXz05koRJs0R",
     )
 
     HOSTED_OPENAI_TRIAL_ENABLED: bool = Field(
         description="Enable trial access to hosted OpenAI service",
-        default=False,
+        default=True,
     )
 
     HOSTED_OPENAI_TRIAL_MODELS: str = Field(
@@ -48,7 +48,7 @@ class HostedOpenAiConfig(BaseSettings):
 
     HOSTED_OPENAI_PAID_ENABLED: bool = Field(
         description="Enable paid access to hosted OpenAI service",
-        default=False,
+        default=True,
     )
 
     HOSTED_OPENAI_PAID_MODELS: str = Field(

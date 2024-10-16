@@ -11,6 +11,9 @@ ENV POETRY_VERSION=1.8.3
 
 RUN pip install --no-cache-dir poetry==${POETRY_VERSION}
 
+# Adicionar as bibliotecas de Machine Learning
+RUN pip install torch==1.12.0 tensorflow==2.9.0 flax==0.5.1
+
 # Configure Poetry
 ENV POETRY_CACHE_DIR=/tmp/poetry_cache
 ENV POETRY_NO_INTERACTION=1
